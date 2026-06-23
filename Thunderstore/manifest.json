@@ -2,7 +2,7 @@
   "name": "BossRules",
   "version_number": "1.0.0",
   "website_url": "https://github.com/sighsorry1029/DropNSpawn",
-  "description": "Standalone boss rules split from DropNSpawn. Edits boss altars, blocks duplicates, personalizes boss stones, rebalances Forsaken Powers, despawns bosses and pressures tames.",
+  "description": "Server-synced boss progression tools: edit altars, block duplicate summons, personalize boss stones, rotate Forsaken Powers remotely, rebalance powers, despawn abandoned bosses, refund offerings, and pressure tames near arenas.",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2333"
   ]
