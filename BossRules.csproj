@@ -163,10 +163,34 @@
             <Minor>$(AssemblyVersion.Split('.')[1])</Minor>
             <Patch>$(AssemblyVersion.Split('.')[2])</Patch>
             <PackageName>$(AssemblyName)_v$(Major).$(Minor).$(Patch)</PackageName>
-            <PackageDir>$(ProjectDir)\Thunderstore\$(PackageName)</PackageDir>
+            <PackageVersion>$(Major).$(Minor).$(Patch)</PackageVersion>
+            <PackageDir>$(ProjectDir)obj\$(Configuration)\Thunderstore\$(PackageName)</PackageDir>
         </PropertyGroup>
     </Target>
     <Target Name="CopyOutputDLL" AfterTargets="GetAssemblyVersion">
         <Copy SourceFiles="$(TargetDir)$(AssemblyName).dll" DestinationFolder="$(CopyOutputDLLPath)" OverwriteReadOnlyFiles="true" Condition="Exists('$(CopyOutputDLLPath)')"/>
+    </Target>
+    <Target Name="UpdateManifestVersion" AfterTargets="CopyOutputDLL" Condition=" ('$(Configuration)|$(Platform)' == 'Release|AnyCPU') And ('$(OS)' == 'Windows_NT') ">
+        <Error Text="manifest.json not found in Thunderstore directory." Condition="!Exists('$(ProjectDir)Thunderstore\manifest.json')"/>
+        <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -Command &quot;$manifestPath = '$(ProjectDir)Thunderstore\manifest.json'; $content = Get-Content -LiteralPath $manifestPath -Raw; $null = $content | ConvertFrom-Json; $q = [char]34; $pattern = '(' + $q + 'version_number' + $q + '\s*:\s*' + $q + ')[^' + $q + ']*(' + $q + ')'; if ($content -notmatch $pattern) { throw 'version_number not found.' }; $updated = [regex]::Replace($content, $pattern, '${1}$(PackageVersion)${2}'); if ($updated -ne $content) { [IO.File]::WriteAllText($manifestPath, $updated, [Text.UTF8Encoding]::new($false)) }&quot;"/>
+    </Target>
+    <Target Name="MakeThunderstorePackage" AfterTargets="UpdateManifestVersion" Condition=" ('$(Configuration)|$(Platform)' == 'Release|AnyCPU') And ('$(OS)' == 'Windows_NT') ">
+        <Error Text="DLL not found in target directory." Condition="!Exists('$(TargetDir)$(AssemblyName).dll')"/>
+        <Error Text="README.md not found in project directory." Condition="!Exists('$(ProjectDir)README.md')"/>
+        <Error Text="CHANGELOG.md not found in Thunderstore directory." Condition="!Exists('$(ProjectDir)Thunderstore\CHANGELOG.md')"/>
+        <Error Text="manifest.json not found in Thunderstore directory." Condition="!Exists('$(ProjectDir)Thunderstore\manifest.json')"/>
+        <Error Text="icon.png not found in Thunderstore directory." Condition="!Exists('$(ProjectDir)Thunderstore\icon.png')"/>
+        <RemoveDir Directories="$(PackageDir)" Condition="Exists('$(PackageDir)')"/>
+        <MakeDir Directories="$(PackageDir)"/>
+        <ItemGroup>
+            <PackageFiles Include="$(TargetDir)$(AssemblyName).dll"/>
+            <PackageFiles Include="$(ProjectDir)README.md"/>
+            <PackageFiles Include="$(ProjectDir)Thunderstore\CHANGELOG.md"/>
+            <PackageFiles Include="$(ProjectDir)Thunderstore\manifest.json"/>
+            <PackageFiles Include="$(ProjectDir)Thunderstore\icon.png"/>
+        </ItemGroup>
+        <Copy SourceFiles="@(PackageFiles)" DestinationFolder="$(PackageDir)"/>
+        <ZipDirectory SourceDirectory="$(PackageDir)" DestinationFile="$(ProjectDir)Thunderstore\$(PackageName).zip" Overwrite="true"/>
+        <RemoveDir Directories="$(PackageDir)"/>
     </Target>
 </Project>

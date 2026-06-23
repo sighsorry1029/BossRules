@@ -1,6 +1,6 @@
 {
   "name": "BossRules",
-  "version_number": "0.1.0",
+  "version_number": "1.0.0",
   "website_url": "https://github.com/sighsorry1029/DropNSpawn",
   "description": "Standalone boss rules split from DropNSpawn. Edits boss altars, blocks duplicates, personalizes boss stones, rebalances Forsaken Powers, despawns bosses and pressures tames.",
   "dependencies": [

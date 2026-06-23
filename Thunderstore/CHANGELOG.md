@@ -1,3 +1,11 @@
+# 1.0.0
+
+- Promoted BossRules to a stable standalone release.
+- Added feature-focused README documentation for Thunderstore and GitHub.
+- Release builds now derive package version from the DLL assembly version and package the root README into the Thunderstore zip.
+- The Thunderstore package now contains only `BossRules.dll`, `README.md`, `CHANGELOG.md`, `manifest.json`, and `icon.png`.
+- Kept BossRules focused on boss altars, duplicate boss protection, boss despawn/refunds, boss tamed pressure, personalized boss stones, and Forsaken Power rules.
+
 # 0.1.0
 
 - Started the standalone BossRules split from DropNSpawn.

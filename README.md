@@ -1,85 +1,125 @@
 # BossRules
 
-Standalone boss altar and boss-rule mod split from DropNSpawn.
+BossRules is a standalone Valheim server mod for boss progression, boss altars, boss stones, Forsaken Powers, and boss cleanup rules.
 
-This standalone slice owns server-synced boss altar edits, same boss duplicate blocking for altars and `CreatureSpawner`, personalized boss stones, remote Forsaken Power selection, boss despawn rules, and boss tamed pressure.
+It was split from DropNSpawn so boss behavior can be managed without also taking ownership of general creature drops, object loot, spawners, or world spawn tables.
 
-## Files
+## Highlights
 
-- `BepInEx/config/BossRules/BossRules.altar.yml`: altar override source.
-- `BepInEx/config/BossRules/BossRules.altar.reference.yml`: generated altar reference target.
-- `BepInEx/config/BossRules/BossRules.yml`: boss despawn and boss tamed pressure rules.
+- Edit boss altars without rebuilding locations by hand.
+- Block duplicate boss summons from both altars and `CreatureSpawner`.
+- Despawn abandoned bosses and optionally refund real altar offerings.
+- Pressure tamed creatures near bosses so boss arenas stay dangerous.
+- Give each player their own boss stone unlock state.
+- Let players rotate unlocked Forsaken Powers remotely.
+- Rebalance Forsaken Power duration, cooldown, costs, regen, damage, armor, movement, skills, and tooltips.
+- Sync server YAML to clients through ServerSync.
+- Reload YAML while the game is running.
 
-## Schema Direction
+## Why Use BossRules
 
-`BossRules.altar.yml` keeps only boss altar behavior fields:
+BossRules focuses on the awkward parts of boss management that usually live across several systems:
+
+- Altars can be edited by prefab name with generated reference data.
+- Boss duplicate protection keeps respawn timers honest instead of letting cooldowns finish in the background.
+- Altar refunds are tied to actual altar-summoned bosses, not nearby world spawns.
+- Boss stones and Forsaken Powers can be customized without turning the mod into a general status-effect editor.
+- Dedicated servers remain the source of truth for synced rule files.
+
+## Generated Files
+
+BossRules creates its files under:
+
+```text
+BepInEx/config/BossRules/
+```
+
+Files:
+
+- `BossRules.altar.yml`: boss altar and boss item stand overrides.
+- `BossRules.altar.reference.yml`: generated reference for loaded boss altar and boss stone prefabs.
+- `BossRules.yml`: boss despawn, boss tamed pressure, Forsaken Power, and localization rules.
+- `sighsorry.BossRules.cfg`: synced BepInEx feature toggles and defaults.
+
+Server admins should edit the YAML on the server or host. Synced YAML is pushed to clients automatically.
+
+## Boss Altars
+
+`BossRules.altar.yml` supports compact altar entries:
 
 - `prefab`
 - `enabled`
 - `offeringBowl`
 - `itemStands`
 
-Location identity, runestone pins, vegvisir effects, and general DropNSpawn spawn/drop domains are intentionally outside this mod.
+Use the generated `BossRules.altar.reference.yml` to find real prefab names, item stand paths, and current altar values. Copy only the rows you want to override into `BossRules.altar.yml`.
+
+BossRules intentionally does not own general location editing, object drops, runestone pins, or vegvisir rewards.
 
 ## Boss Rules
 
-`BossRules.yml` supports:
+`BossRules.yml` controls runtime boss behavior:
 
-- `despawn:` with compact rows: `prefab, despawnRange, despawnDelay, refunds`.
-- `bossTamedPressure:` as a global pressure rule for tamed creatures near bosses.
-- `forsakenPowers:` to rebalance selected Forsaken Power status effects.
-- `localization:` for despawn messages, boss tamed pressure messages, and the remote Forsaken Power rotate label.
+- `despawn`: compact rows in `prefab, despawnRange, despawnDelay, refunds` format.
+- `bossTamedPressure`: a global rule for tamed creatures near bosses.
+- `forsakenPowers`: selected Forsaken Power stat edits and tooltip ordering.
+- `localization`: boss despawn, tame pressure, and remote power selection messages.
 
-Boss prefabs are auto-detected and tracked for despawn using the default despawn config. A compact despawn row can override range/delay; omitted or empty `despawnRange` and `despawnDelay` use the BepInEx config defaults. Set `despawnRange: 0` to disable despawn for that prefab.
+Despawn rows use BepInEx defaults when range or delay is omitted. Set `despawnRange` to `0` to disable despawn for one boss prefab.
 
-The generated `BossRules.yml` exposes the supported `bossTamedPressure` fields with inline comments. Scan, damage tick, and message intervals are fixed internally; use the BepInEx config option to turn the feature off globally.
+Refund values:
 
-`Enable Same Boss Duplicate Block` blocks duplicate boss spawns from both `OfferingBowl` and `CreatureSpawner`. For `CreatureSpawner`, the respawn timer is kept fresh while the duplicate boss is alive, so `respawnMinutes` starts counting after the previous boss is gone instead of completing in the background.
+- omit the fourth value for `true`
+- `true`: refund the actual altar offering when the boss was marked as altar-summoned
+- `false`: no refund
 
-Refund behavior:
-
-- omit the fourth compact value for `true`
-- use `true` to refund the actual altar offering only when the boss ZDO was marked as altar-summoned
-- use `false` for no refund
-- altar refunds are dropped at the original `OfferingBowl` position, falling back to the boss despawn position only when the stored altar position is missing
-
-Localization despawn message templates support `{name}` and `{seconds}` placeholders. Empty despawn message values disable that message. `messageForsakenPowerRotate` changes the `[shortcut] Rotate` HUD label and falls back to `Rotate` when empty.
-
-Spawner or SpawnSystem bosses near an altar do not receive altar refunds because only `OfferingBowl` boss spawns are marked.
+Refunds drop at the original `OfferingBowl` position when possible. Bosses from `CreatureSpawner`, `SpawnSystem`, or other world sources do not receive altar refunds just because they died near an altar.
 
 ## Forsaken Powers
 
-`BossRules.yml` can rebalance selected Forsaken Power `SE_Stats` effects without becoming a general status-effect editor.
+BossRules can rebalance selected `SE_Stats` fields for Forsaken Powers:
 
-Supported fields:
+- duration and cooldown
+- guardian power adrenaline gain
+- stamina costs
+- block stamina return
+- outgoing damage
+- incoming damage modifiers
+- health, stamina, and eitr regen
+- carry weight
+- flat and percent armor
+- movement speed and jump height
+- skill levels
+- adrenaline and stagger gauge
+- tailwind
 
-- `defaults.durationSeconds`, `defaults.cooldownSeconds`
-- `defaults.adrenalineGain`: guardian power activation adrenaline gain for every power, including mod-added powers; omit to keep vanilla 10. Negative values clamp to 0.
-- `staminaCostPercent`: `run`, `jump`, `sneak`, `dodge`, `swim`, `block`, `attack`
-- `blockStaminaReturn`: flat block stamina return, using the same SE_Stats field as vanilla Bonemass.
-- `outgoingDamagePercent`: `Blunt`, `Slash`, `Pierce`, `Chop`, `Pickaxe`, `Fire`, `Frost`, `Lightning`, `Poison`, `Spirit`
-- `incomingDamageModifiers`: individual `DamageType: DamageModifier` rows, such as `Blunt: SlightlyResistant`
-- `regenPercent`: `health`, `stamina`, `eitr`
-- `carryWeight`
-- `armor.flat`, `armor.percent`
-- `movement.speedPercent`, `movement.jumpHeightPercent`
-- `skillLevels`
-- `adrenalinePercent`, `staggerGaugePercent`
-- `tailwind`
+Percent values are written as readable percent numbers. For example, `-50` means 50% lower cost and `100` means 100% more regen.
 
-Percent values are written as readable percent numbers: `-50` means 50% lower cost, `100` means 100% more regen, and `10` means 10% more damage.
-
-Configured Forsaken Power tooltips are reordered by BossRules so related effects stay grouped: damage, incoming damage modifiers, defense, movement, stamina, regen/resources, utility/skills, then duration.
+Configured tooltips are reordered so related effects stay grouped in game: damage, resistance, defense, movement, resources, utility, skills, and duration.
 
 ## Boss Stones
 
-BossRules owns the Start Temple and Deep North personalized boss stone behavior that was previously in DropNSpawn.
+BossRules owns personalized boss stones and remote Forsaken Power selection.
 
-- `Personalized Boss Stones`: each player stores their own unlocked boss stone powers.
-- `Remote Forsaken Power Selection`: lets players rotate through unlocked Forsaken Powers without returning to the Start Temple.
-- `Rotate Forsaken Power Shortcut`: client-only shortcut used for remote rotation.
+- `Personalized Boss Stones`: each player keeps their own unlocked boss stone powers.
+- `Remote Forsaken Power Selection`: players can rotate through unlocked powers without returning to the Start Temple.
+- `Rotate Forsaken Power Shortcut`: client-only shortcut for remote rotation.
 
 Console commands:
 
-- `bossrules:inspect bossstone`: shows personalized boss stone state for the aimed target.
-- `bossrules:bossstone reset <exactPlayerName>`: admin command that resets one player's personalized boss stone unlocks.
+- `bossrules:inspect bossstone`
+- `bossrules:bossstone reset <exactPlayerName>`
+
+## Compatibility
+
+BossRules is designed to sit beside DropNSpawn:
+
+- Use BossRules for boss altars, boss stones, Forsaken Powers, boss despawn, and boss tame pressure.
+- Use DropNSpawn for creature drops, object loot, spawners, and world spawn tables.
+- Use UsefulRunestones for pinless RuneStone global pins and Vegvisir rewards.
+
+If another mod owns the same boss system, disable the overlapping BossRules feature in the BepInEx config.
+
+## GitHub
+
+https://github.com/sighsorry1029/DropNSpawn
