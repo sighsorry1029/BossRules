@@ -12,16 +12,22 @@ namespace BossRules;
 internal sealed class BossRuleConfigurationSection
 {
     [YamlMember(Order = 1)]
-    public List<string>? Despawn { get; set; }
+    public BossDespawnConfigurationDefinition? Despawn { get; set; }
 
     [YamlMember(Order = 2)]
     public BossTamedPressureDefinition? BossTamedPressure { get; set; }
 
     [YamlMember(Order = 3)]
-    public ForsakenPowersDefinition? ForsakenPowers { get; set; }
-
-    [YamlMember(Order = 4)]
     public BossRuleLocalizationDefinition? Localization { get; set; }
+}
+
+internal sealed class BossDespawnConfigurationDefinition
+{
+    [YamlMember(Order = 1)]
+    public string? Defaults { get; set; }
+
+    [YamlMember(Order = 2)]
+    public List<string>? Rules { get; set; }
 }
 
 internal sealed class BossRuleLocalizationDefinition
@@ -65,9 +71,11 @@ internal sealed class BossRuleConfigurationState
 {
     internal static BossRuleConfigurationState Empty => new();
 
+    internal float DefaultDespawnRange { get; set; } = 64f;
+    internal float DefaultDespawnDelaySeconds { get; set; } = 90f;
     internal List<BossDespawnDefinition> DespawnRules { get; } = new();
     internal List<BossTamedPressureDefinition> BossTamedPressureRules { get; } = new();
-    internal ForsakenPowersDefinition? ForsakenPowers { get; set; }
+    internal List<ForsakenPowerDefinition> ForsakenPowers { get; } = new();
     internal string? MessageDespawnStart { get; set; }
     internal string? MessageDespawnReminder { get; set; }
     internal string? MessageDespawnCanceled { get; set; }
@@ -137,7 +145,7 @@ internal static class BossRuleConfiguration
 
             state = Normalize(parsed ?? new BossRuleConfigurationSection());
             BossRulesPlugin.BossRulesLogger.LogInfo(
-                $"Loaded boss rules YAML from {source}: {state.DespawnRules.Count} despawn entries, {state.BossTamedPressureRules.Count} boss tamed pressure entries, {state.ForsakenPowers?.Powers?.Count ?? 0} forsaken power entries.");
+                $"Loaded boss rules YAML from {source}: {state.DespawnRules.Count} despawn entries, {state.BossTamedPressureRules.Count} boss tamed pressure entries.");
             return true;
         }
         catch (Exception ex)
@@ -151,7 +159,8 @@ internal static class BossRuleConfiguration
     private static BossRuleConfigurationState Normalize(BossRuleConfigurationSection section)
     {
         BossRuleConfigurationState state = new();
-        foreach (string rawDespawnRule in section.Despawn ?? new List<string>())
+        (state.DefaultDespawnRange, state.DefaultDespawnDelaySeconds) = ParseDespawnDefaults(section.Despawn?.Defaults);
+        foreach (string rawDespawnRule in section.Despawn?.Rules ?? new List<string>())
         {
             state.DespawnRules.Add(ParseDespawnRule(rawDespawnRule));
         }
@@ -160,12 +169,6 @@ internal static class BossRuleConfiguration
         {
             NormalizeBossTamedPressure(section.BossTamedPressure);
             state.BossTamedPressureRules.Add(section.BossTamedPressure);
-        }
-
-        if (section.ForsakenPowers != null)
-        {
-            NormalizeForsakenPowers(section.ForsakenPowers);
-            state.ForsakenPowers = section.ForsakenPowers;
         }
 
         BossRuleLocalizationDefinition? localization = section.Localization;
@@ -195,6 +198,46 @@ internal static class BossRuleConfiguration
         }
 
         return state;
+    }
+
+    private static (float Range, float DelaySeconds) ParseDespawnDefaults(string? rawDefaults)
+    {
+        if (string.IsNullOrWhiteSpace(rawDefaults))
+        {
+            return (64f, 90f);
+        }
+
+        string raw = rawDefaults!.Trim();
+        string[] parts = raw.Split(',');
+        if (parts.Length > 2)
+        {
+            throw new FormatException($"despawn.defaults '{raw}' has too many values. Expected 'range, delaySeconds'.");
+        }
+
+        float range = ParseDefaultFloat(parts, 0, "range", raw, 64f);
+        float delaySeconds = ParseDefaultFloat(parts, 1, "delaySeconds", raw, 90f);
+        return (range, delaySeconds);
+    }
+
+    private static float ParseDefaultFloat(string[] parts, int index, string fieldName, string rawDefaults, float fallback)
+    {
+        if (parts.Length <= index)
+        {
+            return fallback;
+        }
+
+        string rawValue = parts[index].Trim();
+        if (rawValue.Length == 0)
+        {
+            return fallback;
+        }
+
+        if (float.TryParse(rawValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out float value))
+        {
+            return value;
+        }
+
+        throw new FormatException($"despawn.defaults '{rawDefaults}' has invalid {fieldName} value '{rawValue}'.");
     }
 
     private static BossDespawnDefinition ParseDespawnRule(string rawRule)
@@ -282,29 +325,6 @@ internal static class BossRuleConfiguration
         }
     }
 
-    private static void NormalizeForsakenPowers(ForsakenPowersDefinition? definition)
-    {
-        if (definition == null)
-        {
-            return;
-        }
-
-        definition.Mode = NormalizeOptionalString(definition.Mode);
-        if (definition.Powers == null)
-        {
-            return;
-        }
-
-        foreach (ForsakenPowerDefinition power in definition.Powers)
-        {
-            power.Prefab = NormalizeOptionalString(power.Prefab);
-        }
-
-        definition.Powers = definition.Powers
-            .Where(power => !string.IsNullOrWhiteSpace(power.Prefab))
-            .ToList();
-    }
-
     private static List<string>? NormalizeStringList(List<string>? values)
     {
         List<string>? normalized = values?
@@ -347,8 +367,10 @@ internal static class BossRuleConfigurationFiles
         builder.AppendLine("# BossRules runtime rules");
         builder.AppendLine("#");
         builder.AppendLine("despawn:");
+        builder.AppendLine("  defaults: 64, 90 # default despawnRange, despawnDelaySeconds.");
+        builder.AppendLine("  rules:");
         builder.AppendLine("  # - prefab, despawnRange, despawnDelay, refunds");
-        builder.AppendLine("  #   Empty or omitted despawnRange/despawnDelay uses the BepInEx config defaults.");
+        builder.AppendLine("  #   Empty or omitted despawnRange/despawnDelay uses despawn.defaults.");
         builder.AppendLine("  #   despawnRange: 0 disables despawn for that prefab.");
         builder.AppendLine("  #   refunds omitted or empty: true. Use false to disable altar offering refunds.");
         builder.AppendLine("  - Fader, 64, 90, true # Boss prefabs are auto-detected, but non-boss Character prefabs can also be listed here for despawn rules.");
@@ -365,84 +387,6 @@ internal static class BossRuleConfigurationFiles
         builder.AppendLine("    damagePercentPerSecond: 0.01 # Clamp: 0~1. 0.01 = 1% of max health per second");
         builder.AppendLine("    incomingDamageMultiplier: 1.25 # Clamp: 0~10. Multiplies damage received while affected");
         builder.AppendLine("    outgoingDamageMultiplier: 0.75 # Clamp: 0~10. Multiplies damage dealt while affected");
-        builder.AppendLine();
-        builder.AppendLine("# movement keys: speedPercent, jumpHeightPercent");
-        builder.AppendLine("# staminaCostPercent keys: run, jump, sneak, dodge, swim, block, attack");
-        builder.AppendLine("# incomingDamageModifiers keys: Blunt, Slash, Pierce, Chop, Pickaxe, Fire, Frost, Lightning, Poison, Spirit");
-        builder.AppendLine("# incomingDamageModifiers values: Normal, SlightlyResistant, Resistant, VeryResistant, Immune, SlightlyWeak, Weak, VeryWeak, Ignore");
-        builder.AppendLine("# outgoingDamagePercent keys: Blunt, Slash, Pierce, Chop, Pickaxe, Fire, Frost, Lightning, Poison, Spirit");
-        builder.AppendLine("# regenPercent keys: health, stamina, eitr");
-        builder.AppendLine("# skillLevels keys: Swords, Knives, Clubs, Polearms, Spears, Blocking, Axes, Bows, FireMagic, FrostMagic, Unarmed, Pickaxes, WoodCutting, Jump, Sneak, Run, Swim, Fishing, BloodMagic, ElementalMagic, Crossbows, Cooking, Farming, Crafting, Sailing, Dodge.");
-        builder.AppendLine("# Vanilla SE_Stats applies the first 2 entries.");
-        builder.AppendLine("forsakenPowers:");
-        builder.AppendLine("  mode: replace # replace clears supported vanilla fields before applying; patch keeps omitted vanilla fields.");
-        builder.AppendLine("  defaults:");
-        builder.AppendLine("    durationSeconds: 18 # Applies to every listed power unless overridden on that power.");
-        builder.AppendLine("    cooldownSeconds: 60 # Applies to every listed power unless overridden on that power.");
-        builder.AppendLine("    adrenalineGain: 0 # Guardian power activation adrenaline gain for every power; omit to keep vanilla 10. Negative values clamp to 0.");
-        builder.AppendLine("  powers:");
-        builder.AppendLine("  - prefab: GP_Eikthyr");
-        builder.AppendLine("    staminaCostPercent: # Percent values: -50 halves the cost.");
-        builder.AppendLine("      run: -50");
-        builder.AppendLine("      jump: -50");
-        builder.AppendLine("      sneak: -50");
-        builder.AppendLine("      dodge: -50");
-        builder.AppendLine("    incomingDamageModifiers: # DamageModifier names: SlightlyResistant is vanilla -25% damage.");
-        builder.AppendLine("      Blunt: SlightlyResistant");
-        builder.AppendLine("  - prefab: GP_TheElder");
-        builder.AppendLine("    outgoingDamagePercent:");
-        builder.AppendLine("      Chop: 50");
-        builder.AppendLine("      Pickaxe: 50");
-        builder.AppendLine("    staminaCostPercent:");
-        builder.AppendLine("      swim: -50");
-        builder.AppendLine("    regenPercent:");
-        builder.AppendLine("      health: 100");
-        builder.AppendLine("    incomingDamageModifiers:");
-        builder.AppendLine("      Poison: SlightlyResistant");
-        builder.AppendLine("  - prefab: GP_Bonemass");
-        builder.AppendLine("    staminaCostPercent:");
-        builder.AppendLine("      block: -50");
-        builder.AppendLine("    blockStaminaReturn: 5 # Vanilla Bonemass-style flat block stamina return.");
-        builder.AppendLine("    carryWeight: 300");
-        builder.AppendLine("    armor:");
-        builder.AppendLine("      flat: 10");
-        builder.AppendLine("      percent: 10");
-        builder.AppendLine("    incomingDamageModifiers:");
-        builder.AppendLine("      Frost: SlightlyResistant");
-        builder.AppendLine("  - prefab: GP_Moder");
-        builder.AppendLine("    tailwind: true");
-        builder.AppendLine("    movement:");
-        builder.AppendLine("      speedPercent: 10");
-        builder.AppendLine("      jumpHeightPercent: 20");
-        builder.AppendLine("    skillLevels:");
-        builder.AppendLine("      Farming: 25");
-        builder.AppendLine("    incomingDamageModifiers:");
-        builder.AppendLine("      Fire: SlightlyResistant");
-        builder.AppendLine("  - prefab: GP_Yagluth");
-        builder.AppendLine("    outgoingDamagePercent:");
-        builder.AppendLine("      Fire: 10");
-        builder.AppendLine("      Poison: 10");
-        builder.AppendLine("      Frost: 10");
-        builder.AppendLine("      Lightning: 10");
-        builder.AppendLine("      Spirit: 10");
-        builder.AppendLine("    regenPercent:");
-        builder.AppendLine("      eitr: 100");
-        builder.AppendLine("    incomingDamageModifiers:");
-        builder.AppendLine("      Pierce: SlightlyResistant");
-        builder.AppendLine("  - prefab: GP_Queen");
-        builder.AppendLine("    outgoingDamagePercent:");
-        builder.AppendLine("      Pierce: 10");
-        builder.AppendLine("      Blunt: 10");
-        builder.AppendLine("      Slash: 10");
-        builder.AppendLine("    staminaCostPercent:");
-        builder.AppendLine("      attack: -10");
-        builder.AppendLine("    incomingDamageModifiers:");
-        builder.AppendLine("      Slash: SlightlyResistant");
-        builder.AppendLine("  - prefab: GP_Fader");
-        builder.AppendLine("    adrenalinePercent: 100");
-        builder.AppendLine("    staggerGaugePercent: -50");
-        builder.AppendLine("    incomingDamageModifiers:");
-        builder.AppendLine("      Lightning: SlightlyResistant");
         builder.AppendLine();
         builder.AppendLine("localization:");
         builder.AppendLine("  messageDespawnStart: \"{name} will despawn in {seconds}s unless someone returns.\"");

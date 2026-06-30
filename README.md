@@ -1,8 +1,16 @@
 # BossRules
 
-BossRules is a standalone Valheim server mod for boss progression, boss altars, boss stones, Forsaken Powers, and boss cleanup rules.
+Forsaken powers overhaul, despawn abandoned bosses with offering refunds, hover an altar to see the offering and boss. <br>
+Rotate Forsaken Powers remotely, block duplicate summons, personalize boss stones, and pressure tames near bosses.
 
-It was split from DropNSpawn so boss behavior can be managed without also taking ownership of general creature drops, object loot, spawners, or world spawn tables.
+![](https://i.ibb.co/C3tz6LBW/eikthyrdespawn.gif) <br>
+You can change the boss despawn range and delay in the config.
+
+![](https://i.ibb.co/p6B05TMs/moderdespawn.gif) <br>
+Getting away from the boss with also count for despawn.
+
+![](https://i.ibb.co/kZX4X5J/faderdespawn.gif) <br>
+If you get back in time, despawn would be canceled. If the boss does despawn offerings would be refunded.
 
 ## Highlights
 
@@ -38,8 +46,9 @@ Files:
 
 - `BossRules.altar.yml`: boss altar and boss item stand overrides.
 - `BossRules.altar.reference.yml`: generated reference for loaded boss altar and boss stone prefabs.
-- `BossRules.yml`: boss despawn, boss tamed pressure, Forsaken Power, and localization rules.
-- `sighsorry.BossRules.cfg`: synced BepInEx feature toggles and defaults.
+- `BossRules.yml`: boss despawn, boss tamed pressure, and localization rules.
+- `BossRules.forsakenPowers.yml`: Forsaken Power stat edits in a DataForge-compatible row format.
+- `sighsorry.BossRules.cfg`: synced BepInEx feature toggles.
 
 Server admins should edit the YAML on the server or host. Synced YAML is pushed to clients automatically.
 
@@ -60,12 +69,24 @@ BossRules intentionally does not own general location editing, object drops, run
 
 `BossRules.yml` controls runtime boss behavior:
 
-- `despawn`: compact rows in `prefab, despawnRange, despawnDelay, refunds` format.
+- `despawn`: default range/delay plus compact rows in `prefab, despawnRange, despawnDelay, refunds` format.
 - `bossTamedPressure`: a global rule for tamed creatures near bosses.
-- `forsakenPowers`: selected Forsaken Power stat edits and tooltip ordering.
 - `localization`: boss despawn, tame pressure, and remote power selection messages.
 
-Despawn rows use BepInEx defaults when range or delay is omitted. Set `despawnRange` to `0` to disable despawn for one boss prefab.
+`BossRules.forsakenPowers.yml` controls selected Forsaken Power stat edits. Its top-level list is intentionally compatible with DataForge `effects.yml` rows.
+
+Despawn rows use `despawn.defaults` when range or delay is omitted. Set `despawnRange` to `0` to disable despawn for one boss prefab.
+
+```yaml
+despawn:
+  defaults: 64, 90
+  rules:
+  - Eikthyr
+  - Bonemass, 96, 120
+  - Dragon, , 180
+  - GoblinKing, 0
+  - Fader, 128, 180, false
+```
 
 Refund values:
 
@@ -80,9 +101,9 @@ Refunds drop at the original `OfferingBowl` position when possible. Bosses from 
 BossRules can rebalance selected `SE_Stats` fields for Forsaken Powers:
 
 - duration and cooldown
-- guardian power adrenaline gain
+- guardian power activation adrenaline gain through the synced config
 - stamina costs
-- block stamina return
+- block stamina flat cost and timed block bonus
 - outgoing damage
 - incoming damage modifiers
 - health, stamina, and eitr regen
@@ -91,11 +112,40 @@ BossRules can rebalance selected `SE_Stats` fields for Forsaken Powers:
 - movement speed and jump height
 - skill levels
 - adrenaline and stagger gauge
-- tailwind
+- vanilla status attributes such as `SailingPower`
 
-Percent values are written as readable percent numbers. For example, `-50` means 50% lower cost and `100` means 100% more regen.
+`BossRules.forsakenPowers.yml` uses the same compact style as DataForge status effects:
 
-Configured tooltips are reordered so related effects stay grouped in game: damage, resistance, defense, movement, resources, utility, skills, and duration.
+```yaml
+- effect: GP_Eikthyr
+  time: 18, 60
+  staminaDrainModifier:
+    run: -0.5
+    jump: -0.5
+
+- effect: GP_Moder
+  time: 18, 60
+  attributes: SailingPower
+  stats:
+    speedModifier: 0.1
+    jumpModifier: 0, 0.2, 0
+```
+
+Modifier values use Valheim/DataForge-style factors. For example, `-0.5` means 50% lower cost, `0.1` means +10%, and `regenMultiplier: 2, 1, 1` means health regen x2 while stamina and eitr stay unchanged.
+
+### Vanilla vs BossRules Forsaken Powers
+
+The table below compares vanilla `GP_` effect rows from DataForge `effects.reference.yml` with the BossRules preset in `BossRules.forsakenPowers.yml`.
+
+| Effect | Vanilla effect | BossRules effect |
+| --- | --- | --- |
+| `GP_Eikthyr` | `time: 300, 1200`<br>Stamina drain: run/jump/swim `-0.6` | `time: 16, 60`<br>Pickaxe damage `0.5`<br>Stamina drain: run/dodge `-0.5`<br>Speed `0.1`<br>Blunt: `SlightlyResistant` |
+| `GP_TheElder` | `time: 300, 1200`<br>Regen `1.3, 1, 1`<br>Chop/pickaxe damage `0.6` | `time: 16, 60`<br>Chop damage `0.5`<br>Stamina drain: swim/sneak `-0.5`<br>Regen `2, 1, 1`<br>Poison: `SlightlyResistant` |
+| `GP_Bonemass` | `time: 300, 1200`<br>Block `0, -5`<br>Block stamina drain `-1`<br>Blunt/slash/pierce: `SlightlyResistant` | `time: 16, 60`<br>Block stamina drain `-0.5`<br>Block `0, -5`<br>Armor `20, 0.2`<br>Frost: `SlightlyResistant` |
+| `GP_Moder` | `time: 300, 1200`<br>`SailingPower`<br>Speed `0.1`<br>Carry weight `300`<br>Frost: `Resistant` | `time: 16, 60`<br>`SailingPower`<br>Stamina drain: jump `-0.5`<br>Carry weight `300`<br>Jump `0, 0.2, 0`<br>Farming/Fishing skill `25`<br>Fire: `SlightlyResistant` |
+| `GP_Yagluth` | `time: 300, 1200`<br>Farming skill `25`<br>Lightning: `Resistant`<br>Blunt/slash/pierce/chop/pickaxe/fire/frost/lightning/poison/spirit damage `0.1` | `time: 16, 60`<br>Fire/poison/frost/lightning/spirit damage `0.1`<br>Regen `1, 1, 2`<br>Pierce: `SlightlyResistant` |
+| `GP_Queen` | `time: 300, 1200`<br>Regen `1, 1, 2`<br>Sneak stamina drain `-1`<br>Poison: `Resistant` | `time: 16, 60`<br>Pierce/blunt/slash damage `0.1`<br>Attack stamina drain `-0.1`<br>Slash: `SlightlyResistant` |
+| `GP_Fader` | `time: 300, 1200`<br>Adrenaline `1`<br>Stagger `-0.5`<br>Attack damage `None, 0`<br>Fire: `Resistant` | `time: 16, 60`<br>Adrenaline `1`<br>Stagger `-0.5`<br>Lightning: `SlightlyResistant` |
 
 ## Boss Stones
 
@@ -121,5 +171,4 @@ BossRules is designed to sit beside DropNSpawn:
 If another mod owns the same boss system, disable the overlapping BossRules feature in the BepInEx config.
 
 ## GitHub
-
-https://github.com/sighsorry1029/DropNSpawn
+https://github.com/sighsorry1029/BossRules

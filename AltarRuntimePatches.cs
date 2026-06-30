@@ -1,8 +1,52 @@
+using System;
+using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
 
 namespace BossRules;
+
+[HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.SpawnLocation), new Type[]
+{
+    typeof(ZoneSystem.ZoneLocation),
+    typeof(int),
+    typeof(Vector3),
+    typeof(Quaternion),
+    typeof(ZoneSystem.SpawnMode),
+    typeof(List<GameObject>)
+})]
+[HarmonyAfter("expand_world_data")]
+internal static class ZoneSystemSpawnLocationAltarPatch
+{
+    private sealed class SpawnLocationState
+    {
+        public string PrefabName { get; set; } = "";
+    }
+
+    private static void Prefix(ZoneSystem.ZoneLocation location, ref SpawnLocationState? __state)
+    {
+        string prefabName = AltarLocationResolver.GetLocationSpawnContextPrefabName(location);
+        if (prefabName.Length == 0)
+        {
+            return;
+        }
+
+        __state = new SpawnLocationState
+        {
+            PrefabName = prefabName
+        };
+    }
+
+    private static void Postfix(GameObject __result, SpawnLocationState? __state)
+    {
+        if (__result == null || __state == null)
+        {
+            return;
+        }
+
+        AltarRuntime.ReconcileSpawnedLocationRoot(__result, __state.PrefabName);
+    }
+}
 
 [HarmonyPatch(typeof(Location), nameof(Location.Awake))]
 internal static class LocationAwakeAltarPatch
@@ -35,8 +79,8 @@ internal static class LocationProxySpawnLocationAltarPatch
             return;
         }
 
-        if (!AltarLocationResolver.TryResolveZoneLocationPrefabName(__instance.transform.position, out string prefabName) &&
-            !AltarLocationResolver.TryResolveLocationProxyPrefabName(__instance, out prefabName))
+        if (!AltarLocationResolver.TryResolveLocationProxyPrefabName(__instance, out string prefabName) &&
+            !AltarLocationResolver.TryResolveZoneLocationPrefabName(__instance.transform.position, out prefabName))
         {
             return;
         }
@@ -61,6 +105,11 @@ internal static class OfferingBowlGetHoverTextAltarPatch
 {
     private static void Postfix(OfferingBowl __instance, ref string __result)
     {
+        if (!BossRulesConfig.ShouldShowOfferingBowlHoverInfo())
+        {
+            return;
+        }
+
         AltarRuntime.ReconcileLooseOfferingBowl(__instance);
         __result = OfferingBowlHoverInfoFormatter.AppendInfo(__result, __instance);
     }
@@ -208,6 +257,11 @@ internal static class ItemStandGetHoverTextAltarPatch
 {
     private static void Postfix(ItemStand __instance, ref string __result)
     {
+        if (!BossRulesConfig.ShouldShowOfferingBowlHoverInfo())
+        {
+            return;
+        }
+
         __result = AltarItemStandHoverInfoFormatter.AppendInfo(__result, __instance);
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 
 namespace BossRules;
@@ -10,6 +11,9 @@ internal static class AltarLocationResolver
     private static readonly Dictionary<LocationProxy, string> RuntimeLocationProxyPrefabsByInstance = new();
     private static readonly Dictionary<ZDOID, string> RuntimeLocationProxyPrefabsByZdoId = new();
     private static readonly int LocationProxyResolvedPrefabZdoKey = $"{BossRulesPlugin.ModName}.location_proxy_prefab".GetStableHashCode();
+    private static readonly int ExpandWorldDataLocationReferenceHash = "locationreference".GetStableHashCode();
+    private static bool _expandWorldDataCurrentLocationFieldResolved;
+    private static FieldInfo? _expandWorldDataCurrentLocationField;
 
     internal static void RecordLocationProxyResolvedPrefab(LocationProxy? proxy, string prefabName)
     {
@@ -170,7 +174,19 @@ internal static class AltarLocationResolver
         prefabName = "";
         ZNetView? nview = proxy.GetComponent<ZNetView>();
         ZDO? zdo = nview?.GetZDO();
+        int expandWorldDataLocationHash = zdo?.GetInt(ExpandWorldDataLocationReferenceHash) ?? 0;
+        if (TryResolveLocationHashPrefabName(expandWorldDataLocationHash, out prefabName))
+        {
+            return true;
+        }
+
         int locationHash = zdo?.GetInt(ZDOVars.s_location) ?? 0;
+        return TryResolveLocationHashPrefabName(locationHash, out prefabName);
+    }
+
+    private static bool TryResolveLocationHashPrefabName(int locationHash, out string prefabName)
+    {
+        prefabName = "";
         if (locationHash == 0)
         {
             return false;
@@ -250,11 +266,91 @@ internal static class AltarLocationResolver
         return (location?.m_prefabName ?? location?.m_prefab.Name ?? "").Trim();
     }
 
+    internal static string GetLocationSpawnContextPrefabName(ZoneSystem.ZoneLocation? location)
+    {
+        string locationPrefab = GetZoneLocationPrefabName(location);
+        if (!locationPrefab.Contains(":") &&
+            TryGetExpandWorldDataCurrentLocationPrefabName(out string currentLocationPrefab) &&
+            currentLocationPrefab.Contains(":") &&
+            string.Equals(GetLocationPrefabBaseName(currentLocationPrefab), locationPrefab, StringComparison.OrdinalIgnoreCase))
+        {
+            return currentLocationPrefab;
+        }
+
+        return locationPrefab;
+    }
+
+    private static bool TryGetExpandWorldDataCurrentLocationPrefabName(out string prefabName)
+    {
+        prefabName = "";
+        if (!_expandWorldDataCurrentLocationFieldResolved)
+        {
+            Type? locationSpawningType = FindLoadedType("ExpandWorldData.LocationSpawning", "ExpandWorldData");
+            _expandWorldDataCurrentLocationField = locationSpawningType?.GetField("CurrentLocation", BindingFlags.Public | BindingFlags.Static);
+            _expandWorldDataCurrentLocationFieldResolved = true;
+        }
+
+        try
+        {
+            if (_expandWorldDataCurrentLocationField?.GetValue(null) is not ZoneSystem.ZoneLocation currentLocation)
+            {
+                return false;
+            }
+
+            prefabName = GetZoneLocationPrefabName(currentLocation);
+            return prefabName.Length > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static string GetLocationPrefabBaseName(string prefabName)
     {
         string trimmed = (prefabName ?? "").Trim();
-        int separator = trimmed.LastIndexOf(':');
-        return separator >= 0 ? trimmed.Substring(separator + 1) : trimmed;
+        int separator = trimmed.IndexOf(':');
+        return separator > 0 ? trimmed.Substring(0, separator).Trim() : trimmed;
+    }
+
+    private static Type? FindLoadedType(string fullTypeName, string preferredAssemblySimpleName)
+    {
+        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (!string.Equals(assembly.GetName().Name, preferredAssemblySimpleName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            Type? type = TryGetType(assembly, fullTypeName);
+            if (type != null)
+            {
+                return type;
+            }
+        }
+
+        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            Type? type = TryGetType(assembly, fullTypeName);
+            if (type != null)
+            {
+                return type;
+            }
+        }
+
+        return null;
+    }
+
+    private static Type? TryGetType(Assembly assembly, string fullTypeName)
+    {
+        try
+        {
+            return assembly.GetType(fullTypeName, throwOnError: false, ignoreCase: false);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static Transform GetRootTransform(Transform transform)

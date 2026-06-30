@@ -2,26 +2,20 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using HarmonyLib;
 using UnityEngine;
 
 namespace BossRules;
 
 internal static partial class ForsakenPowerRuntime
 {
-    private const string ModePatch = "patch";
     private static readonly object Sync = new();
-    private static readonly HashSet<int> TooltipPowerHashes = new();
-    private static readonly HashSet<int> TailwindPowerHashes = new();
-    private static readonly AccessTools.FieldRef<Ship, List<Player>> ShipPlayersRef =
-        AccessTools.FieldRefAccess<Ship, List<Player>>("m_players");
 
-    private static ForsakenPowersDefinition? _definition;
+    private static List<ForsakenPowerDefinition>? _definition;
     private static bool _pendingApply;
     private static bool _lastEnabled;
     private static string _lastAppliedSignature = "";
 
-    internal static void Configure(ForsakenPowersDefinition? definition)
+    internal static void Configure(List<ForsakenPowerDefinition>? definition)
     {
         lock (Sync)
         {
@@ -30,14 +24,28 @@ internal static partial class ForsakenPowerRuntime
         }
     }
 
+    internal static void RequestReapply()
+    {
+        lock (Sync)
+        {
+            _pendingApply = true;
+        }
+    }
+
+    internal static void ReleaseDataForgeOwnedSnapshots()
+    {
+        lock (Sync)
+        {
+            RestoreSnapshotsOwnedByDataForgeLocked();
+        }
+    }
+
     internal static void Reset()
     {
         lock (Sync)
         {
             _definition = null;
-            RestoreAllSnapshotsLocked();
-            TooltipPowerHashes.Clear();
-            TailwindPowerHashes.Clear();
+            RestoreSnapshotsNotOwnedByDataForgeLocked();
             _pendingApply = false;
             _lastAppliedSignature = "";
             _lastEnabled = false;
@@ -48,7 +56,7 @@ internal static partial class ForsakenPowerRuntime
     {
         bool enabled = BossRulesConfig.IsForsakenPowerRulesEnabled();
         string signature;
-        ForsakenPowersDefinition? definition;
+        List<ForsakenPowerDefinition>? definition;
         lock (Sync)
         {
             definition = _definition;
@@ -71,11 +79,9 @@ internal static partial class ForsakenPowerRuntime
             enabled = BossRulesConfig.IsForsakenPowerRulesEnabled();
             definition = _definition;
             signature = enabled ? BuildDefinitionSignature(definition) : "<disabled>";
-            RestoreAllSnapshotsLocked();
-            TooltipPowerHashes.Clear();
-            TailwindPowerHashes.Clear();
+            RestoreSnapshotsNotOwnedByDataForgeLocked();
 
-            if (enabled && definition?.Powers is { Count: > 0 })
+            if (enabled && definition is { Count: > 0 })
             {
                 ApplyDefinitionLocked(definition);
             }
@@ -86,41 +92,6 @@ internal static partial class ForsakenPowerRuntime
         }
     }
 
-    internal static bool HasTailwindPower(Ship? ship)
-    {
-        if (ship == null || !BossRulesConfig.IsForsakenPowerRulesEnabled())
-        {
-            return false;
-        }
-
-        lock (Sync)
-        {
-            if (TailwindPowerHashes.Count == 0)
-            {
-                return false;
-            }
-        }
-
-        List<Player>? players = ShipPlayersRef(ship);
-        if (players == null || players.Count == 0)
-        {
-            return false;
-        }
-
-        lock (Sync)
-        {
-            foreach (Player player in players)
-            {
-                if (PlayerHasAnyPowerHash(player, TailwindPowerHashes))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
     internal static bool TryOverrideGuardianPowerAdrenalineGain(Player? player, out float originalValue)
     {
         originalValue = player?.m_adrenalineGuardianPower ?? 0f;
@@ -129,39 +100,23 @@ internal static partial class ForsakenPowerRuntime
             return false;
         }
 
-        float? adrenalineGain;
-        lock (Sync)
-        {
-            adrenalineGain = _definition?.Defaults?.AdrenalineGain;
-        }
-
-        if (!adrenalineGain.HasValue)
-        {
-            return false;
-        }
-
-        player.m_adrenalineGuardianPower = Mathf.Max(0f, adrenalineGain.Value);
+        player.m_adrenalineGuardianPower = BossRulesConfig.GetGuardianPowerActivationAdrenaline();
         return true;
     }
 
-    private static void ApplyDefinitionLocked(ForsakenPowersDefinition definition)
+    private static void ApplyDefinitionLocked(List<ForsakenPowerDefinition> definition)
     {
-        string mode = (definition.Mode ?? "replace").Trim();
-        bool replace = true;
-        if (string.Equals(mode, ModePatch, StringComparison.OrdinalIgnoreCase))
-        {
-            replace = false;
-        }
-        else if (!string.Equals(mode, "replace", StringComparison.OrdinalIgnoreCase))
-        {
-            BossRulesRuntime.WarnInvalidEntry($"forsakenPowers.mode '{mode}' is unknown. Supported values are replace and patch. Using replace.");
-        }
-
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach (ForsakenPowerDefinition power in definition.Powers ?? new List<ForsakenPowerDefinition>())
+        HashSet<string> cleared = new(StringComparer.OrdinalIgnoreCase);
+        foreach (ForsakenPowerDefinition power in definition)
         {
-            string prefab = (power.Prefab ?? "").Trim();
+            string prefab = (power.Effect ?? "").Trim();
             if (prefab.Length == 0)
+            {
+                continue;
+            }
+
+            if (DataForgeStatusEffectBridge.IsStatusEffectOwnedByDataForge(prefab))
             {
                 continue;
             }
@@ -179,14 +134,14 @@ internal static partial class ForsakenPowerRuntime
             }
 
             EnsureSnapshotLocked(statusEffect);
-            TooltipPowerHashes.Add(statusEffect.NameHash());
-            SE_Stats? stats = statusEffect as SE_Stats;
-            if (replace && stats != null)
+            if (cleared.Add(prefab))
             {
-                ClearSupportedStats(stats);
+                ClearSupportedFields(statusEffect);
             }
 
-            ApplyDurationAndCooldown(statusEffect, definition.Defaults, power);
+            SE_Stats? stats = statusEffect as SE_Stats;
+
+            ApplyStatusEffectFields(statusEffect, power, prefab);
             if (stats != null)
             {
                 ApplyStats(stats, power, prefab);
@@ -196,135 +151,142 @@ internal static partial class ForsakenPowerRuntime
                 BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{prefab}' is not an SE_Stats StatusEffect. Numeric stat fields were ignored.");
             }
 
-            int hash = statusEffect.NameHash();
-            if (power.Tailwind == true)
-            {
-                TailwindPowerHashes.Add(hash);
-            }
         }
     }
 
-    private static void ApplyDurationAndCooldown(
-        StatusEffect statusEffect,
-        ForsakenPowerDefaultsDefinition? defaults,
-        ForsakenPowerDefinition power)
+    private static void ApplyStatusEffectFields(StatusEffect statusEffect, ForsakenPowerDefinition power, string context)
     {
-        float? duration = power.DurationSeconds ?? defaults?.DurationSeconds;
-        if (duration.HasValue)
+        float[]? time = ParseFloatTuple(power.Time, context, "time", 1, 2);
+        if (time is { Length: > 0 })
         {
-            statusEffect.m_ttl = Mathf.Max(0f, duration.Value);
+            statusEffect.m_ttl = Mathf.Max(0f, time[0]);
         }
 
-        float? cooldown = power.CooldownSeconds ?? defaults?.CooldownSeconds;
-        if (cooldown.HasValue)
+        if (time is { Length: > 1 })
         {
-            statusEffect.m_cooldown = Mathf.Max(0f, cooldown.Value);
+            statusEffect.m_cooldown = Mathf.Max(0f, time[1]);
         }
+
+        if (string.IsNullOrWhiteSpace(power.Attributes))
+        {
+            return;
+        }
+
+        if (Enum.TryParse(power.Attributes, true, out StatusEffect.StatusAttribute attributes))
+        {
+            statusEffect.m_attributes = attributes;
+            return;
+        }
+
+        BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has unsupported attributes value '{power.Attributes}'.");
     }
 
     private static void ApplyStats(SE_Stats stats, ForsakenPowerDefinition power, string context)
     {
-        ApplyStaminaCostPercent(stats, power.StaminaCostPercent, context);
-        ApplyBlockStaminaReturn(stats, power);
-        ApplyOutgoingDamagePercent(stats, power.OutgoingDamagePercent, context);
-        ApplyIncomingDamageModifiers(stats, power.IncomingDamageModifiers, context);
-        ApplyRegenPercent(stats, power.RegenPercent, context);
-
-        if (power.CarryWeight.HasValue)
-        {
-            stats.m_addMaxCarryWeight = power.CarryWeight.Value;
-        }
-
-        if (power.Armor?.Flat.HasValue == true)
-        {
-            stats.m_addArmor = power.Armor.Flat.Value;
-        }
-
-        if (power.Armor?.Percent.HasValue == true)
-        {
-            stats.m_armorMultiplier = PercentToFactor(power.Armor.Percent.Value);
-        }
-
-        if (power.Movement?.SpeedPercent.HasValue == true)
-        {
-            stats.m_speedModifier = PercentToFactor(power.Movement.SpeedPercent.Value);
-        }
-
-        if (power.Movement?.JumpHeightPercent.HasValue == true)
-        {
-            stats.m_jumpModifier.y = PercentToFactor(power.Movement.JumpHeightPercent.Value);
-        }
-
-        ApplySkillLevels(stats, power.SkillLevels, context);
-
-        if (power.AdrenalinePercent.HasValue)
-        {
-            stats.m_adrenalineModifier = PercentToFactor(power.AdrenalinePercent.Value);
-        }
-
-        if (power.StaggerGaugePercent.HasValue)
-        {
-            stats.m_staggerModifier = PercentToFactor(power.StaggerGaugePercent.Value);
-        }
+        ApplyStatsBlock(stats, power.Stats, context);
+        ApplyStaminaDrainModifier(stats, power.StaminaDrainModifier);
+        ApplyPercentageDamageModifiers(stats, power.PercentageDamageModifiers, context);
+        ApplyDamageTakenModifiers(stats, power.DamageTakenModifiers, context);
     }
 
-    private static void ApplyBlockStaminaReturn(SE_Stats stats, ForsakenPowerDefinition power)
+    private static void ApplyStatsBlock(SE_Stats stats, ForsakenPowerStatsDefinition? definition, string context)
     {
-        if (!power.BlockStaminaReturn.HasValue)
+        if (definition == null)
         {
             return;
         }
 
-        stats.m_blockStaminaUseFlatValue = -Mathf.Max(0f, power.BlockStaminaReturn.Value);
+        float[]? regenMultiplier = ParseFloatTuple(definition.RegenMultiplier, context, "stats.regenMultiplier", 1, 3);
+        if (regenMultiplier is { Length: > 0 })
+        {
+            stats.m_healthRegenMultiplier = Mathf.Max(0f, regenMultiplier[0]);
+            stats.m_staminaRegenMultiplier = Mathf.Max(0f, regenMultiplier.Length > 1 ? regenMultiplier[1] : 1f);
+            stats.m_eitrRegenMultiplier = Mathf.Max(0f, regenMultiplier.Length > 2 ? regenMultiplier[2] : 1f);
+        }
+
+        if (definition.StaminaDrainPerSec.HasValue)
+        {
+            stats.m_staminaDrainPerSec = definition.StaminaDrainPerSec.Value;
+        }
+
+        if (definition.AdrenalineModifier.HasValue)
+        {
+            stats.m_adrenalineModifier = definition.AdrenalineModifier.Value;
+        }
+
+        if (definition.SpeedModifier.HasValue)
+        {
+            stats.m_speedModifier = definition.SpeedModifier.Value;
+        }
+
+        if (definition.SwimSpeedModifier.HasValue)
+        {
+            stats.m_swimSpeedModifier = definition.SwimSpeedModifier.Value;
+        }
+
+        float[]? jumpModifier = ParseFloatTuple(definition.JumpModifier, context, "stats.jumpModifier", 1, 3);
+        if (jumpModifier is { Length: > 0 })
+        {
+            stats.m_jumpModifier.x = jumpModifier[0];
+            stats.m_jumpModifier.y = jumpModifier.Length > 1 ? jumpModifier[1] : 0f;
+            stats.m_jumpModifier.z = jumpModifier.Length > 2 ? jumpModifier[2] : 0f;
+        }
+
+        float[]? windRun = ParseFloatTuple(definition.WindRun, context, "stats.windRun", 1, 2);
+        if (windRun is { Length: > 0 })
+        {
+            stats.m_windMovementModifier = windRun[0];
+            stats.m_windRunStaminaModifier = windRun.Length > 1 ? windRun[1] : 0f;
+        }
+
+        float[]? armor = ParseFloatTuple(definition.Armor, context, "stats.armor", 1, 2);
+        if (armor is { Length: > 0 })
+        {
+            stats.m_addArmor = armor[0];
+            stats.m_armorMultiplier = armor.Length > 1 ? armor[1] : 0f;
+        }
+
+        float[]? block = ParseFloatTuple(definition.Block, context, "stats.block", 1, 2);
+        if (block is { Length: > 0 })
+        {
+            stats.m_timedBlockBonus = block[0];
+            stats.m_blockStaminaUseFlatValue = block.Length > 1 ? block[1] : 0f;
+        }
+
+        if (definition.StaggerModifier.HasValue)
+        {
+            stats.m_staggerModifier = definition.StaggerModifier.Value;
+        }
+
+        if (definition.AddMaxCarryWeight.HasValue)
+        {
+            stats.m_addMaxCarryWeight = definition.AddMaxCarryWeight.Value;
+        }
+
+        ApplySkillLevel(stats, definition.SkillLevel, context, "stats.skillLevel", first: true);
+        ApplySkillLevel(stats, definition.SkillLevel2, context, "stats.skillLevel2", first: false);
     }
 
-    private static void ApplyStaminaCostPercent(
+    private static void ApplyStaminaDrainModifier(
         SE_Stats stats,
-        Dictionary<string, float>? values,
-        string context)
+        ForsakenPowerStaminaDrainModifierDefinition? definition)
     {
-        if (values == null)
+        if (definition == null)
         {
             return;
         }
 
-        foreach (KeyValuePair<string, float> entry in values)
-        {
-            string rawKey = entry.Key;
-            float percent = entry.Value;
-            string key = NormalizeKey(rawKey);
-            float value = PercentToFactor(percent);
-            switch (key)
-            {
-                case "run":
-                    stats.m_runStaminaDrainModifier = value;
-                    break;
-                case "jump":
-                    stats.m_jumpStaminaUseModifier = value;
-                    break;
-                case "sneak":
-                    stats.m_sneakStaminaUseModifier = value;
-                    break;
-                case "dodge":
-                    stats.m_dodgeStaminaUseModifier = value;
-                    break;
-                case "swim":
-                    stats.m_swimStaminaUseModifier = value;
-                    break;
-                case "block":
-                    stats.m_blockStaminaUseModifier = value;
-                    break;
-                case "attack":
-                    stats.m_attackStaminaUseModifier = value;
-                    break;
-                default:
-                    BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has unsupported staminaCostPercent key '{rawKey}'.");
-                    break;
-            }
-        }
+        if (definition.Run.HasValue) stats.m_runStaminaDrainModifier = definition.Run.Value;
+        if (definition.Attack.HasValue) stats.m_attackStaminaUseModifier = definition.Attack.Value;
+        if (definition.Block.HasValue) stats.m_blockStaminaUseModifier = definition.Block.Value;
+        if (definition.Dodge.HasValue) stats.m_dodgeStaminaUseModifier = definition.Dodge.Value;
+        if (definition.Jump.HasValue) stats.m_jumpStaminaUseModifier = definition.Jump.Value;
+        if (definition.Sneak.HasValue) stats.m_sneakStaminaUseModifier = definition.Sneak.Value;
+        if (definition.Swim.HasValue) stats.m_swimStaminaUseModifier = definition.Swim.Value;
+        if (definition.HomeItem.HasValue) stats.m_homeItemStaminaUseModifier = definition.HomeItem.Value;
     }
 
-    private static void ApplyOutgoingDamagePercent(
+    private static void ApplyPercentageDamageModifiers(
         SE_Stats stats,
         Dictionary<string, float>? values,
         string context)
@@ -337,15 +299,14 @@ internal static partial class ForsakenPowerRuntime
         foreach (KeyValuePair<string, float> entry in values)
         {
             string rawType = entry.Key;
-            float percent = entry.Value;
-            if (!SetDamagePercent(ref stats.m_percentigeDamageModifiers, rawType, PercentToFactor(percent)))
+            if (!SetDamagePercent(ref stats.m_percentigeDamageModifiers, rawType, entry.Value))
             {
-                BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has unsupported outgoingDamagePercent type '{rawType}'.");
+                BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has unsupported percentageDamageModifiers type '{rawType}'.");
             }
         }
     }
 
-    private static void ApplyIncomingDamageModifiers(
+    private static void ApplyDamageTakenModifiers(
         SE_Stats stats,
         Dictionary<string, string>? values,
         string context)
@@ -363,13 +324,13 @@ internal static partial class ForsakenPowerRuntime
             if (!Enum.TryParse(rawType, true, out HitData.DamageType damageType) ||
                 !IsIndividualDamageType(damageType))
             {
-                BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has unsupported incomingDamageModifiers type '{rawType}'.");
+                BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has unsupported damageTakenModifiers type '{rawType}'.");
                 continue;
             }
 
             if (!Enum.TryParse(rawModifier, true, out HitData.DamageModifier modifier))
             {
-                BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has unsupported incomingDamageModifiers modifier '{rawModifier}'.");
+                BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has unsupported damageTakenModifiers modifier '{rawModifier}'.");
                 continue;
             }
 
@@ -377,78 +338,49 @@ internal static partial class ForsakenPowerRuntime
         }
     }
 
-    private static void ApplyRegenPercent(
+    private static void ApplySkillLevel(
         SE_Stats stats,
-        Dictionary<string, float>? values,
-        string context)
+        string? value,
+        string context,
+        string fieldName,
+        bool first)
     {
-        if (values == null)
+        if (string.IsNullOrWhiteSpace(value))
         {
             return;
         }
 
-        foreach (KeyValuePair<string, float> entry in values)
+        string rawValue = value!.Trim();
+        string[] parts = rawValue.Split(',');
+        if (parts.Length != 2)
         {
-            string rawKey = entry.Key;
-            float percent = entry.Value;
-            float multiplier = 1f + PercentToFactor(percent);
-            switch (NormalizeKey(rawKey))
-            {
-                case "health":
-                    stats.m_healthRegenMultiplier = multiplier;
-                    break;
-                case "stamina":
-                    stats.m_staminaRegenMultiplier = multiplier;
-                    break;
-                case "eitr":
-                    stats.m_eitrRegenMultiplier = multiplier;
-                    break;
-                default:
-                    BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has unsupported regenPercent key '{rawKey}'.");
-                    break;
-            }
-        }
-    }
-
-    private static void ApplySkillLevels(
-        SE_Stats stats,
-        Dictionary<string, float>? values,
-        string context)
-    {
-        if (values == null || values.Count == 0)
-        {
+            BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has invalid {fieldName} value '{rawValue}'. Use SkillName, amount.");
             return;
         }
 
-        int index = 0;
-        foreach (KeyValuePair<string, float> entry in values)
+        string rawSkill = parts[0].Trim();
+        if (!Enum.TryParse(rawSkill, true, out Skills.SkillType skill) ||
+            skill == Skills.SkillType.None)
         {
-            string rawSkill = entry.Key;
-            float value = entry.Value;
-            if (!Enum.TryParse(rawSkill, true, out Skills.SkillType skill) ||
-                skill == Skills.SkillType.None)
-            {
-                BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has unsupported skillLevels key '{rawSkill}'.");
-                continue;
-            }
-
-            if (index == 0)
-            {
-                stats.m_skillLevel = skill;
-                stats.m_skillLevelModifier = value;
-            }
-            else if (index == 1)
-            {
-                stats.m_skillLevel2 = skill;
-                stats.m_skillLevelModifier2 = value;
-            }
-            else
-            {
-                BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has more than two skillLevels entries. '{rawSkill}' was ignored because SE_Stats supports two skill level slots.");
-            }
-
-            index++;
+            BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has unsupported {fieldName} skill '{rawSkill}'.");
+            return;
         }
+
+        if (!float.TryParse(parts[1].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float modifier))
+        {
+            BossRulesRuntime.WarnInvalidEntry($"forsakenPowers entry '{context}' has invalid {fieldName} amount '{parts[1].Trim()}'.");
+            return;
+        }
+
+        if (first)
+        {
+            stats.m_skillLevel = skill;
+            stats.m_skillLevelModifier = modifier;
+            return;
+        }
+
+        stats.m_skillLevel2 = skill;
+        stats.m_skillLevelModifier2 = modifier;
     }
 
     private static bool SetDamagePercent(ref HitData.DamageTypes damageTypes, string rawType, float value)
@@ -546,24 +478,6 @@ internal static partial class ForsakenPowerRuntime
             or HitData.DamageType.Spirit;
     }
 
-    private static bool PlayerHasAnyPowerHash(Player? player, HashSet<int> hashes)
-    {
-        if (player == null)
-        {
-            return false;
-        }
-
-        foreach (StatusEffect statusEffect in player.GetSEMan().GetStatusEffects())
-        {
-            if (statusEffect != null && hashes.Contains(statusEffect.NameHash()))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static StatusEffect? ResolveStatusEffect(string prefab)
     {
         string normalized = (prefab ?? "").Trim();
@@ -585,17 +499,10 @@ internal static partial class ForsakenPowerRuntime
 
     private static bool HasStatFields(ForsakenPowerDefinition power)
     {
-        return power.StaminaCostPercent is { Count: > 0 } ||
-               power.BlockStaminaReturn.HasValue ||
-               power.OutgoingDamagePercent is { Count: > 0 } ||
-               power.IncomingDamageModifiers is { Count: > 0 } ||
-               power.RegenPercent is { Count: > 0 } ||
-               power.CarryWeight.HasValue ||
-               power.Armor != null ||
-               power.Movement != null ||
-               power.SkillLevels is { Count: > 0 } ||
-               power.AdrenalinePercent.HasValue ||
-               power.StaggerGaugePercent.HasValue;
+        return power.Stats != null ||
+               power.StaminaDrainModifier != null ||
+               power.DamageTakenModifiers is { Count: > 0 } ||
+               power.PercentageDamageModifiers is { Count: > 0 };
     }
 
     private static bool IsGameDataReady()
@@ -603,20 +510,55 @@ internal static partial class ForsakenPowerRuntime
         return ObjectDB.instance?.m_StatusEffects is { Count: > 0 };
     }
 
-    private static string BuildDefinitionSignature(ForsakenPowersDefinition? definition)
+    private static string BuildDefinitionSignature(List<ForsakenPowerDefinition>? definition)
     {
-        if (definition?.Powers == null)
+        if (definition == null)
         {
             return "<none>";
         }
 
         return string.Join(
             "\n",
-            definition.Mode ?? "replace",
-            definition.Defaults?.DurationSeconds?.ToString("R", CultureInfo.InvariantCulture) ?? "",
-            definition.Defaults?.CooldownSeconds?.ToString("R", CultureInfo.InvariantCulture) ?? "",
-            definition.Defaults?.AdrenalineGain?.ToString("R", CultureInfo.InvariantCulture) ?? "",
-            string.Join("|", definition.Powers.Select(power => power.Prefab ?? "")));
+            definition.Select(power => string.Join(
+                "|",
+                power.Effect ?? "",
+                power.Time ?? "",
+                power.Attributes ?? "",
+                power.Stats != null ? "stats" : "",
+                power.StaminaDrainModifier != null ? "stamina" : "",
+                power.DamageTakenModifiers?.Count.ToString(CultureInfo.InvariantCulture) ?? "",
+                power.PercentageDamageModifiers?.Count.ToString(CultureInfo.InvariantCulture) ?? "")));
+    }
+
+    private static float[]? ParseFloatTuple(string? rawValue, string context, string fieldName, int minCount, int maxCount)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return null;
+        }
+
+        string raw = rawValue!.Trim();
+        string[] parts = raw.Split(',');
+        if (parts.Length < minCount || parts.Length > maxCount)
+        {
+            BossRulesRuntime.WarnInvalidEntry(
+                $"forsakenPowers entry '{context}' has invalid {fieldName} value '{raw}'. Expected {minCount}~{maxCount} comma-separated number(s).");
+            return null;
+        }
+
+        float[] values = new float[parts.Length];
+        for (int index = 0; index < parts.Length; index++)
+        {
+            string part = parts[index].Trim();
+            if (!float.TryParse(part, NumberStyles.Float, CultureInfo.InvariantCulture, out values[index]))
+            {
+                BossRulesRuntime.WarnInvalidEntry(
+                    $"forsakenPowers entry '{context}' has invalid {fieldName} number '{part}'.");
+                return null;
+            }
+        }
+
+        return values;
     }
 
     private static string NormalizeKey(string? value)
@@ -628,8 +570,4 @@ internal static partial class ForsakenPowerRuntime
             .ToLowerInvariant();
     }
 
-    private static float PercentToFactor(float percent)
-    {
-        return percent / 100f;
-    }
 }

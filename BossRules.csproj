@@ -120,10 +120,10 @@
         <Compile Include="DespawnRulesManager.cs"/>
         <Compile Include="DespawnRulesManager.Messages.cs"/>
         <Compile Include="DespawnRulesManager.Observations.cs"/>
+        <Compile Include="DataForgeStatusEffectBridge.cs"/>
         <Compile Include="ForsakenPowerConfiguration.cs"/>
         <Compile Include="ForsakenPowerRuntime.cs"/>
         <Compile Include="ForsakenPowerRuntime.Snapshots.cs"/>
-        <Compile Include="ForsakenPowerRuntime.Tooltips.cs"/>
         <Compile Include="ForsakenPowerRuntimePatches.cs"/>
         <Compile Include="ForsakenPowerSelectionRuntime.cs"/>
         <Compile Include="RangeDefinitions.cs"/>

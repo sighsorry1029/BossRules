@@ -36,6 +36,8 @@ internal static partial class DespawnRulesManager
     private static readonly List<ZDOID> PendingDespawnDetachPersistRemovals = new();
     private static readonly System.Diagnostics.Stopwatch DespawnClock = System.Diagnostics.Stopwatch.StartNew();
     private static float _nextDespawnTrackingRefreshAt;
+    private static float _defaultDespawnRange = 64f;
+    private static float _defaultDespawnDelaySeconds = 90f;
 
     private readonly struct PendingDespawnDetachPersist
     {
@@ -117,13 +119,19 @@ internal static partial class DespawnRulesManager
 
         internal float GetEffectiveRange()
         {
-            return Mathf.Clamp(RangeOverride ?? BossRulesConfig.GetDefaultDespawnRange(), 0f, 128f);
+            return Mathf.Clamp(RangeOverride ?? _defaultDespawnRange, 0f, 128f);
         }
 
         internal float GetEffectiveDelaySeconds()
         {
-            return Mathf.Clamp(DelayOverride ?? BossRulesConfig.GetDefaultDespawnDelaySeconds(), 0f, 300f);
+            return Mathf.Clamp(DelayOverride ?? _defaultDespawnDelaySeconds, 0f, 300f);
         }
+    }
+
+    internal static void ConfigureDefaults(float despawnRange, float despawnDelaySeconds)
+    {
+        _defaultDespawnRange = Mathf.Clamp(despawnRange, 0f, 128f);
+        _defaultDespawnDelaySeconds = Mathf.Clamp(despawnDelaySeconds, 0f, 300f);
     }
 
     internal static void ExecuteServerTick()

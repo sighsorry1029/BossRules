@@ -11,10 +11,9 @@ internal static class BossRulesConfig
     private static ConfigEntry<BossRulesPlugin.Toggle> _showOfferingBowlHoverInfo = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _enableSameBossDuplicateBlock = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _enableDespawnRules = null!;
-    private static ConfigEntry<float> _defaultDespawnDelaySeconds = null!;
-    private static ConfigEntry<float> _defaultDespawnRange = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _enableBossTamedPressure = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _enableForsakenPowerRules = null!;
+    private static ConfigEntry<float> _guardianPowerActivationAdrenaline = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _perPlayerBossStones = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _remoteForsakenPowerSelection = null!;
     private static ConfigEntry<KeyboardShortcut> _rotateForsakenPowerShortcut = null!;
@@ -74,9 +73,16 @@ internal static class BossRulesConfig
             "2 - Forsaken & Altars",
             "Forsaken Power Overhaul",
             BossRulesPlugin.Toggle.On,
-            $"If on, {BossRulesPlugin.RulesYamlFileName} forsakenPowers entries can rebalance Forsaken Power duration, cooldown, stats, resistances, and supported special effects.",
+            $"If on, {BossRulesPlugin.ForsakenPowersYamlFileName} entries can rebalance Forsaken Power duration, cooldown, stats, resistances, and supported special effects.",
             synchronizedSetting: true,
             configManagerOrder: 400);
+        _guardianPowerActivationAdrenaline = plugin.BindConfigEntry(
+            "2 - Forsaken & Altars",
+            "Guardian Power Activation Adrenaline",
+            1f,
+            "Adrenaline granted when a Guardian Power is activated. Vanilla is 10. Negative values clamp to 0.",
+            synchronizedSetting: true,
+            configManagerOrder: 450);
         _remoteForsakenPowerSelection = plugin.BindConfigEntry(
             "2 - Forsaken & Altars",
             "Remote Forsaken Power Selection",
@@ -91,20 +97,6 @@ internal static class BossRulesConfig
             $"If on, {BossRulesPlugin.RulesYamlFileName} despawn entries and auto-detected boss despawn tracking can remove bosses when no living player is nearby.",
             synchronizedSetting: true,
             configManagerOrder: 300);
-        _defaultDespawnDelaySeconds = plugin.BindConfigEntry(
-            "3 - Boss Rules",
-            "default despawn delay seconds",
-            90f,
-            "Default seconds to wait after no living player is within range before a tracked boss despawns.",
-            synchronizedSetting: true,
-            configManagerOrder: 100);
-        _defaultDespawnRange = plugin.BindConfigEntry(
-            "3 - Boss Rules",
-            "default despawn range",
-            64f,
-            "Default horizontal XZ range used to decide whether any living player is near a tracked boss.",
-            synchronizedSetting: true,
-            configManagerOrder: 200);
     }
 
     internal static bool IsClientDebugLogEnabled() => _clientDebugLog?.Value == BossRulesPlugin.Toggle.On;
@@ -124,13 +116,12 @@ internal static class BossRulesConfig
 
     internal static bool ShouldCaptureAltarSpawnRefunds() => IsDespawnRulesEnabled();
 
-    internal static float GetDefaultDespawnDelaySeconds() => _defaultDespawnDelaySeconds?.Value ?? 90f;
-
-    internal static float GetDefaultDespawnRange() => _defaultDespawnRange?.Value ?? 64f;
-
     internal static bool IsBossTamedPressureEnabled() => _enableBossTamedPressure?.Value != BossRulesPlugin.Toggle.Off;
 
     internal static bool IsForsakenPowerRulesEnabled() => _enableForsakenPowerRules?.Value != BossRulesPlugin.Toggle.Off;
+
+    internal static float GetGuardianPowerActivationAdrenaline() =>
+        Mathf.Max(0f, _guardianPowerActivationAdrenaline?.Value ?? 1f);
 
     internal static bool IsPerPlayerBossStonesEnabled() => _perPlayerBossStones?.Value != BossRulesPlugin.Toggle.Off;
 

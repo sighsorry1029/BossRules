@@ -12,14 +12,18 @@ internal static partial class ForsakenPowerRuntime
         public StatusEffect Effect { get; set; } = null!;
         public float Ttl { get; set; }
         public float Cooldown { get; set; }
+        public StatusEffect.StatusAttribute Attributes { get; set; }
         public float RunStaminaDrainModifier { get; set; }
         public float JumpStaminaUseModifier { get; set; }
         public float AttackStaminaUseModifier { get; set; }
         public float BlockStaminaUseModifier { get; set; }
         public float BlockStaminaUseFlatValue { get; set; }
+        public float TimedBlockBonus { get; set; }
         public float DodgeStaminaUseModifier { get; set; }
         public float SwimStaminaUseModifier { get; set; }
         public float SneakStaminaUseModifier { get; set; }
+        public float HomeItemStaminaUseModifier { get; set; }
+        public float StaminaDrainPerSec { get; set; }
         public float HealthRegenMultiplier { get; set; }
         public float StaminaRegenMultiplier { get; set; }
         public float EitrRegenMultiplier { get; set; }
@@ -35,6 +39,8 @@ internal static partial class ForsakenPowerRuntime
         public float SpeedModifier { get; set; }
         public float SwimSpeedModifier { get; set; }
         public Vector3 JumpModifier { get; set; }
+        public float WindMovementModifier { get; set; }
+        public float WindRunStaminaModifier { get; set; }
         public float AdrenalineModifier { get; set; }
         public float StaggerModifier { get; set; }
     }
@@ -51,7 +57,8 @@ internal static partial class ForsakenPowerRuntime
         {
             Effect = effect,
             Ttl = effect.m_ttl,
-            Cooldown = effect.m_cooldown
+            Cooldown = effect.m_cooldown,
+            Attributes = effect.m_attributes
         };
 
         if (effect is SE_Stats stats)
@@ -61,14 +68,18 @@ internal static partial class ForsakenPowerRuntime
                 Effect = effect,
                 Ttl = effect.m_ttl,
                 Cooldown = effect.m_cooldown,
+                Attributes = effect.m_attributes,
                 RunStaminaDrainModifier = stats.m_runStaminaDrainModifier,
                 JumpStaminaUseModifier = stats.m_jumpStaminaUseModifier,
                 AttackStaminaUseModifier = stats.m_attackStaminaUseModifier,
                 BlockStaminaUseModifier = stats.m_blockStaminaUseModifier,
                 BlockStaminaUseFlatValue = stats.m_blockStaminaUseFlatValue,
+                TimedBlockBonus = stats.m_timedBlockBonus,
                 DodgeStaminaUseModifier = stats.m_dodgeStaminaUseModifier,
                 SwimStaminaUseModifier = stats.m_swimStaminaUseModifier,
                 SneakStaminaUseModifier = stats.m_sneakStaminaUseModifier,
+                HomeItemStaminaUseModifier = stats.m_homeItemStaminaUseModifier,
+                StaminaDrainPerSec = stats.m_staminaDrainPerSec,
                 HealthRegenMultiplier = stats.m_healthRegenMultiplier,
                 StaminaRegenMultiplier = stats.m_staminaRegenMultiplier,
                 EitrRegenMultiplier = stats.m_eitrRegenMultiplier,
@@ -86,6 +97,8 @@ internal static partial class ForsakenPowerRuntime
                 SpeedModifier = stats.m_speedModifier,
                 SwimSpeedModifier = stats.m_swimSpeedModifier,
                 JumpModifier = stats.m_jumpModifier,
+                WindMovementModifier = stats.m_windMovementModifier,
+                WindRunStaminaModifier = stats.m_windRunStaminaModifier,
                 AdrenalineModifier = stats.m_adrenalineModifier,
                 StaggerModifier = stats.m_staggerModifier
             };
@@ -94,10 +107,28 @@ internal static partial class ForsakenPowerRuntime
         SnapshotsByHash[hash] = snapshot;
     }
 
-    private static void RestoreAllSnapshotsLocked()
+    private static void RestoreSnapshotsNotOwnedByDataForgeLocked()
     {
         foreach (ForsakenPowerSnapshot snapshot in SnapshotsByHash.Values)
         {
+            if (DataForgeStatusEffectBridge.IsStatusEffectOwnedByDataForge(Utils.GetPrefabName(snapshot.Effect.name)))
+            {
+                continue;
+            }
+
+            RestoreSnapshot(snapshot);
+        }
+    }
+
+    private static void RestoreSnapshotsOwnedByDataForgeLocked()
+    {
+        foreach (ForsakenPowerSnapshot snapshot in SnapshotsByHash.Values)
+        {
+            if (!DataForgeStatusEffectBridge.IsStatusEffectOwnedByDataForge(Utils.GetPrefabName(snapshot.Effect.name)))
+            {
+                continue;
+            }
+
             RestoreSnapshot(snapshot);
         }
     }
@@ -112,6 +143,7 @@ internal static partial class ForsakenPowerRuntime
 
         effect.m_ttl = snapshot.Ttl;
         effect.m_cooldown = snapshot.Cooldown;
+        effect.m_attributes = snapshot.Attributes;
         if (effect is not SE_Stats stats)
         {
             return;
@@ -122,9 +154,12 @@ internal static partial class ForsakenPowerRuntime
         stats.m_attackStaminaUseModifier = snapshot.AttackStaminaUseModifier;
         stats.m_blockStaminaUseModifier = snapshot.BlockStaminaUseModifier;
         stats.m_blockStaminaUseFlatValue = snapshot.BlockStaminaUseFlatValue;
+        stats.m_timedBlockBonus = snapshot.TimedBlockBonus;
         stats.m_dodgeStaminaUseModifier = snapshot.DodgeStaminaUseModifier;
         stats.m_swimStaminaUseModifier = snapshot.SwimStaminaUseModifier;
         stats.m_sneakStaminaUseModifier = snapshot.SneakStaminaUseModifier;
+        stats.m_homeItemStaminaUseModifier = snapshot.HomeItemStaminaUseModifier;
+        stats.m_staminaDrainPerSec = snapshot.StaminaDrainPerSec;
         stats.m_healthRegenMultiplier = snapshot.HealthRegenMultiplier;
         stats.m_staminaRegenMultiplier = snapshot.StaminaRegenMultiplier;
         stats.m_eitrRegenMultiplier = snapshot.EitrRegenMultiplier;
@@ -140,20 +175,31 @@ internal static partial class ForsakenPowerRuntime
         stats.m_speedModifier = snapshot.SpeedModifier;
         stats.m_swimSpeedModifier = snapshot.SwimSpeedModifier;
         stats.m_jumpModifier = snapshot.JumpModifier;
+        stats.m_windMovementModifier = snapshot.WindMovementModifier;
+        stats.m_windRunStaminaModifier = snapshot.WindRunStaminaModifier;
         stats.m_adrenalineModifier = snapshot.AdrenalineModifier;
         stats.m_staggerModifier = snapshot.StaggerModifier;
     }
 
-    private static void ClearSupportedStats(SE_Stats stats)
+    private static void ClearSupportedFields(StatusEffect effect)
     {
+        effect.m_attributes = StatusEffect.StatusAttribute.None;
+        if (effect is not SE_Stats stats)
+        {
+            return;
+        }
+
         stats.m_runStaminaDrainModifier = 0f;
         stats.m_jumpStaminaUseModifier = 0f;
         stats.m_attackStaminaUseModifier = 0f;
         stats.m_blockStaminaUseModifier = 0f;
         stats.m_blockStaminaUseFlatValue = 0f;
+        stats.m_timedBlockBonus = 0f;
         stats.m_dodgeStaminaUseModifier = 0f;
         stats.m_swimStaminaUseModifier = 0f;
         stats.m_sneakStaminaUseModifier = 0f;
+        stats.m_homeItemStaminaUseModifier = 0f;
+        stats.m_staminaDrainPerSec = 0f;
         stats.m_healthRegenMultiplier = 1f;
         stats.m_staminaRegenMultiplier = 1f;
         stats.m_eitrRegenMultiplier = 1f;
@@ -169,7 +215,10 @@ internal static partial class ForsakenPowerRuntime
         stats.m_speedModifier = 0f;
         stats.m_swimSpeedModifier = 0f;
         stats.m_jumpModifier = Vector3.zero;
+        stats.m_windMovementModifier = 0f;
+        stats.m_windRunStaminaModifier = 0f;
         stats.m_adrenalineModifier = 0f;
         stats.m_staggerModifier = 0f;
     }
+
 }

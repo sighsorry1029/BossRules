@@ -14,12 +14,13 @@ namespace BossRules;
 public sealed class BossRulesPlugin : BaseUnityPlugin
 {
     internal const string ModName = "BossRules";
-    internal const string ModVersion = "1.0.0";
+    internal const string ModVersion = "1.0.1";
     internal const string Author = "sighsorry";
     internal const string ModGUID = $"{Author}.{ModName}";
     internal const string AltarYamlFileName = $"{ModName}.altar.yml";
     internal const string AltarReferenceYamlFileName = $"{ModName}.altar.reference.yml";
     internal const string RulesYamlFileName = $"{ModName}.yml";
+    internal const string ForsakenPowersYamlFileName = $"{ModName}.forsakenPowers.yml";
     private const float FileReloadDebounceSeconds = 0.25f;
 
     internal static BossRulesPlugin? Instance { get; private set; }
@@ -29,11 +30,13 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
     private readonly Harmony _harmony = new(ModGUID);
     private CustomSyncedValue<string> _syncedAltarYaml = null!;
     private CustomSyncedValue<string> _syncedRulesYaml = null!;
+    private CustomSyncedValue<string> _syncedForsakenPowersYaml = null!;
     private FileSystemWatcher? _watcher;
     private float _reloadDueAt = -1f;
     private ConfigEntry<Toggle> _lockConfiguration = null!;
     private IReadOnlyList<AltarConfigurationEntry> _altarEntries = Array.Empty<AltarConfigurationEntry>();
     private BossRuleConfigurationState _rulesConfiguration = BossRuleConfigurationState.Empty;
+    private IReadOnlyList<ForsakenPowerDefinition> _forsakenPowers = Array.Empty<ForsakenPowerDefinition>();
 
     public enum Toggle
     {
@@ -48,6 +51,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
     internal static string AltarYamlFilePath => Path.Combine(ConfigDirectoryPath, AltarYamlFileName);
     internal static string AltarReferenceYamlFilePath => Path.Combine(ConfigDirectoryPath, AltarReferenceYamlFileName);
     internal static string RulesYamlFilePath => Path.Combine(ConfigDirectoryPath, RulesYamlFileName);
+    internal static string ForsakenPowersYamlFilePath => Path.Combine(ConfigDirectoryPath, ForsakenPowersYamlFileName);
     internal static bool IsSourceOfTruth => ConfigSync.IsSourceOfTruth;
     internal static IReadOnlyList<AltarConfigurationEntry> AltarEntries =>
         Instance?._altarEntries ?? Array.Empty<AltarConfigurationEntry>();
@@ -62,16 +66,20 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         Directory.CreateDirectory(ConfigDirectoryPath);
         AltarConfigurationFiles.EnsureDefaultFiles();
         BossRuleConfigurationFiles.EnsureDefaultFile();
+        ForsakenPowerConfigurationFiles.EnsureDefaultFile();
         BindConfiguration();
 
         _syncedAltarYaml = new CustomSyncedValue<string>(ConfigSync, "altar-yaml", "", priority: 50);
         _syncedAltarYaml.ValueChanged += HandleSyncedAltarYamlChanged;
         _syncedRulesYaml = new CustomSyncedValue<string>(ConfigSync, "rules-yaml", "", priority: 60);
         _syncedRulesYaml.ValueChanged += HandleSyncedRulesYamlChanged;
+        _syncedForsakenPowersYaml = new CustomSyncedValue<string>(ConfigSync, "forsaken-powers-yaml", "", priority: 65);
+        _syncedForsakenPowersYaml.ValueChanged += HandleSyncedForsakenPowersYamlChanged;
         ConfigSync.SourceOfTruthChanged += HandleSourceOfTruthChanged;
 
         LoadLocalAltarYamlAndPublish("startup");
         LoadLocalRulesYamlAndPublish("startup");
+        LoadLocalForsakenPowersYamlAndPublish("startup");
         _harmony.PatchAll(typeof(BossRulesPlugin).Assembly);
         BossStonePerPlayerRuntime.Initialize();
         BossRulesConsoleCommands.Register();
@@ -82,6 +90,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
     private void Update()
     {
         ProcessQueuedYamlReload();
+        DataForgeStatusEffectBridge.ProcessDeferredSubscription();
         AltarRuntime.ProcessPendingAltarSummonMarkers();
         AltarRuntime.ProcessDeferredReapply();
         AltarReferenceGenerator.TryAutoRefreshReferenceConfigurationFile();
@@ -106,6 +115,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
 
         _syncedAltarYaml.ValueChanged -= HandleSyncedAltarYamlChanged;
         _syncedRulesYaml.ValueChanged -= HandleSyncedRulesYamlChanged;
+        _syncedForsakenPowersYaml.ValueChanged -= HandleSyncedForsakenPowersYamlChanged;
         _watcher?.Dispose();
         _watcher = null;
         AltarRuntime.Shutdown();
@@ -113,6 +123,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         AltarReferenceGenerator.ResetAutoRefresh();
         BossRulesManager.ClearRuntimeState();
         BossRulesRuntime.Reset();
+        DataForgeStatusEffectBridge.Shutdown();
         _harmony.UnpatchSelf();
         Config.Save();
     }
@@ -216,7 +227,8 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
 
         string fileName = Path.GetFileName(args.FullPath);
         if (!string.Equals(fileName, AltarYamlFileName, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(fileName, RulesYamlFileName, StringComparison.OrdinalIgnoreCase))
+            !string.Equals(fileName, RulesYamlFileName, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(fileName, ForsakenPowersYamlFileName, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -234,6 +246,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         _reloadDueAt = -1f;
         LoadLocalAltarYamlAndPublish("file change");
         LoadLocalRulesYamlAndPublish("file change");
+        LoadLocalForsakenPowersYamlAndPublish("file change");
     }
 
     private void HandleSourceOfTruthChanged(bool sourceOfTruth)
@@ -243,11 +256,13 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
             AltarReferenceGenerator.ResetAutoRefresh();
             LoadLocalAltarYamlAndPublish("authority change");
             LoadLocalRulesYamlAndPublish("authority change");
+            LoadLocalForsakenPowersYamlAndPublish("authority change");
             return;
         }
 
         ApplyAltarYaml(_syncedAltarYaml.Value ?? "", "server sync");
         ApplyRulesYaml(_syncedRulesYaml.Value ?? "", "server sync");
+        ApplyForsakenPowersYaml(_syncedForsakenPowersYaml.Value ?? "", "server sync");
     }
 
     private void HandleSyncedAltarYamlChanged()
@@ -268,6 +283,16 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         }
 
         ApplyRulesYaml(_syncedRulesYaml.Value ?? "", "server sync");
+    }
+
+    private void HandleSyncedForsakenPowersYamlChanged()
+    {
+        if (IsSourceOfTruth)
+        {
+            return;
+        }
+
+        ApplyForsakenPowersYaml(_syncedForsakenPowersYaml.Value ?? "", "server sync");
     }
 
     private void LoadLocalAltarYamlAndPublish(string source)
@@ -320,6 +345,31 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         }
     }
 
+    private void LoadLocalForsakenPowersYamlAndPublish(string source)
+    {
+        ForsakenPowerConfigurationFiles.EnsureDefaultFile();
+        string yaml;
+        try
+        {
+            yaml = File.ReadAllText(ForsakenPowersYamlFilePath);
+        }
+        catch (Exception ex)
+        {
+            BossRulesLogger.LogError($"Failed to read {ForsakenPowersYamlFilePath}. {ex.GetType().Name}: {ex.Message}");
+            return;
+        }
+
+        if (!ApplyForsakenPowersYaml(yaml, source))
+        {
+            return;
+        }
+
+        if (IsSourceOfTruth)
+        {
+            _syncedForsakenPowersYaml.AssignLocalValue(yaml);
+        }
+    }
+
     private bool ApplyAltarYaml(string yaml, string source)
     {
         string content = yaml ?? "";
@@ -343,7 +393,35 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         }
 
         _rulesConfiguration = configuration;
-        BossRulesRuntime.Reload(configuration);
+        BossRulesRuntime.Reload(BuildMergedRulesConfiguration());
         return true;
+    }
+
+    private bool ApplyForsakenPowersYaml(string yaml, string source)
+    {
+        if (!ForsakenPowerConfiguration.TryParse(yaml, source, out IReadOnlyList<ForsakenPowerDefinition> entries))
+        {
+            return false;
+        }
+
+        _forsakenPowers = entries;
+        BossRulesRuntime.Reload(BuildMergedRulesConfiguration());
+        return true;
+    }
+
+    private BossRuleConfigurationState BuildMergedRulesConfiguration()
+    {
+        BossRuleConfigurationState merged = new();
+        merged.DefaultDespawnRange = _rulesConfiguration.DefaultDespawnRange;
+        merged.DefaultDespawnDelaySeconds = _rulesConfiguration.DefaultDespawnDelaySeconds;
+        merged.DespawnRules.AddRange(_rulesConfiguration.DespawnRules);
+        merged.BossTamedPressureRules.AddRange(_rulesConfiguration.BossTamedPressureRules);
+        merged.ForsakenPowers.AddRange(_forsakenPowers);
+        merged.MessageDespawnStart = _rulesConfiguration.MessageDespawnStart;
+        merged.MessageDespawnReminder = _rulesConfiguration.MessageDespawnReminder;
+        merged.MessageDespawnCanceled = _rulesConfiguration.MessageDespawnCanceled;
+        merged.MessageBossTamedPressure = _rulesConfiguration.MessageBossTamedPressure;
+        merged.MessageForsakenPowerRotate = _rulesConfiguration.MessageForsakenPowerRotate;
+        return merged;
     }
 }

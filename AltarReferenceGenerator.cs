@@ -100,6 +100,7 @@ internal static class AltarReferenceGenerator
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull | DefaultValuesHandling.OmitDefaults)
         .Build();
+    private const float AutoRefreshIdleRetryDelaySeconds = 1f;
     private const float AutoRefreshRetryDelaySeconds = 5f;
     private static readonly HashSet<string> DuplicateComponentWarnings = new(StringComparer.OrdinalIgnoreCase);
     private static bool _autoRefreshDone;
@@ -113,14 +114,26 @@ internal static class AltarReferenceGenerator
 
     internal static void TryAutoRefreshReferenceConfigurationFile()
     {
-        if (_autoRefreshDone || !BossRulesPlugin.IsSourceOfTruth || ZoneSystem.instance == null ||
-            Time.realtimeSinceStartup < _nextAutoRefreshAttemptAt)
+        if (_autoRefreshDone || !BossRulesPlugin.IsSourceOfTruth)
         {
+            return;
+        }
+
+        float now = Time.realtimeSinceStartup;
+        if (now < _nextAutoRefreshAttemptAt)
+        {
+            return;
+        }
+
+        if (ZoneSystem.instance == null)
+        {
+            _nextAutoRefreshAttemptAt = now + AutoRefreshIdleRetryDelaySeconds;
             return;
         }
 
         if (ZoneSystem.instance.m_locations == null || ZoneSystem.instance.m_locations.Count == 0)
         {
+            _nextAutoRefreshAttemptAt = now + AutoRefreshIdleRetryDelaySeconds;
             return;
         }
 
@@ -129,6 +142,7 @@ internal static class AltarReferenceGenerator
             string content = BuildReferenceConfigurationContent(out int entryCount);
             if (entryCount == 0)
             {
+                _nextAutoRefreshAttemptAt = now + AutoRefreshIdleRetryDelaySeconds;
                 return;
             }
 

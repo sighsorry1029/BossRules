@@ -39,7 +39,11 @@ internal static class BossRulesRuntime
     private static RuntimeState _runtimeState = RuntimeState.Empty;
     private static BossCatalog _bossCatalog = BossCatalog.Empty;
     private static int _runtimeGameDataSignature = -1;
-    private static string _runtimeConfigurationSignature = "";
+    private static int _runtimeConfigurationVersion = -1;
+    private static int _configurationVersion;
+    private static int _cachedGameDataMarker = int.MinValue;
+    private static int _cachedGameDataSignature = -1;
+    private static bool _cachedGameDataSignatureDirty = true;
     private static BossRuleConfigurationState _configuration = BossRuleConfigurationState.Empty;
     private static int _despawnLookupVersion;
 
@@ -50,8 +54,13 @@ internal static class BossRulesRuntime
             _configuration = configuration ?? BossRuleConfigurationState.Empty;
             _runtimeState = RuntimeState.Empty;
             _runtimeGameDataSignature = -1;
-            _runtimeConfigurationSignature = "";
+            _runtimeConfigurationVersion = -1;
+            _configurationVersion++;
+            _cachedGameDataSignatureDirty = true;
             _despawnLookupVersion++;
+            DespawnRulesManager.ConfigureDefaults(
+                _configuration.DefaultDespawnRange,
+                _configuration.DefaultDespawnDelaySeconds);
             DespawnRulesManager.MarkBootstrapScanDirty("boss rules reload");
             DespawnRulesManager.ConfigureMessages(
                 _configuration.MessageDespawnStart,
@@ -71,9 +80,12 @@ internal static class BossRulesRuntime
             _configuration = BossRuleConfigurationState.Empty;
             _runtimeState = RuntimeState.Empty;
             _runtimeGameDataSignature = -1;
-            _runtimeConfigurationSignature = "";
+            _runtimeConfigurationVersion = -1;
+            _configurationVersion++;
+            _cachedGameDataSignatureDirty = true;
             _bossCatalog = BossCatalog.Empty;
             _despawnLookupVersion++;
+            DespawnRulesManager.ConfigureDefaults(64f, 90f);
             DespawnRulesManager.ConfigureMessages(null, null, null);
             BossTamedPressureRuntime.Configure(Array.Empty<BossTamedPressureDefinition>(), null);
             ForsakenPowerRuntime.Reset();
@@ -320,6 +332,20 @@ internal static class BossRulesRuntime
         }
     }
 
+    internal static int GetGameDataSignature()
+    {
+        int marker = GetGameDataMarker();
+        if (!_cachedGameDataSignatureDirty && _cachedGameDataMarker == marker)
+        {
+            return _cachedGameDataSignature;
+        }
+
+        _cachedGameDataMarker = marker;
+        _cachedGameDataSignature = ComputeGameDataSignature();
+        _cachedGameDataSignatureDirty = false;
+        return _cachedGameDataSignature;
+    }
+
     internal static IEnumerable<GameObject> EnumeratePrefabsForRuntime()
     {
         HashSet<GameObject> seen = new();
@@ -413,17 +439,16 @@ internal static class BossRulesRuntime
 
     private static void EnsureRuntimeState()
     {
-        int gameDataSignature = ComputeGameDataSignature();
-        string configurationSignature = BuildConfigurationSignature(_configuration);
+        int gameDataSignature = GetGameDataSignature();
         if (_runtimeGameDataSignature == gameDataSignature &&
-            string.Equals(_runtimeConfigurationSignature, configurationSignature, StringComparison.Ordinal))
+            _runtimeConfigurationVersion == _configurationVersion)
         {
             return;
         }
 
         _runtimeState = BuildRuntimeState(_configuration);
         _runtimeGameDataSignature = gameDataSignature;
-        _runtimeConfigurationSignature = configurationSignature;
+        _runtimeConfigurationVersion = _configurationVersion;
         _despawnLookupVersion++;
     }
 
@@ -474,7 +499,7 @@ internal static class BossRulesRuntime
 
     private static BossCatalog EnsureBossCatalog()
     {
-        int gameDataSignature = ComputeGameDataSignature();
+        int gameDataSignature = GetGameDataSignature();
         if (_bossCatalog.GameDataSignature == gameDataSignature)
         {
             return _bossCatalog;
@@ -517,41 +542,20 @@ internal static class BossRulesRuntime
         return prefab != null ? prefab.name : "";
     }
 
-    private static string BuildConfigurationSignature(BossRuleConfigurationState configuration)
+    private static int GetGameDataMarker()
     {
-        string despawnSignature = string.Join(
-            "\n",
-            configuration.DespawnRules.Select(entry =>
-                string.Join("|",
-                    entry.Prefab,
-                    entry.DespawnRange?.ToString("R") ?? "",
-                    entry.DespawnDelay?.ToString("R") ?? "",
-                    entry.Refunds.HasValue ? entry.Refunds.Value.ToString() : "<auto>")));
-        string pressureSignature = string.Join(
-            "\n",
-            configuration.BossTamedPressureRules.Select(BuildBossTamedPressureRuleSignature));
-        return string.Join(
-            "\n",
-            despawnSignature,
-            pressureSignature,
-            configuration.MessageDespawnStart ?? "<default>",
-            configuration.MessageDespawnReminder ?? "<default>",
-            configuration.MessageDespawnCanceled ?? "<default>",
-            configuration.MessageBossTamedPressure ?? "<default>");
-    }
+        unchecked
+        {
+            int hash = 17;
+            ZNetScene? zNetScene = ZNetScene.instance;
+            hash = hash * 31 + (zNetScene != null ? zNetScene.GetInstanceID() : 0);
+            hash = hash * 31 + (zNetScene?.m_prefabs?.Count ?? -1);
 
-    private static string BuildBossTamedPressureRuleSignature(BossTamedPressureDefinition definition)
-    {
-        return string.Join("|",
-            string.Join(",", definition.BossPrefabs ?? new List<string>()),
-            string.Join(",", definition.ExcludedBossPrefabs ?? new List<string>()),
-            definition.Targets?.Range?.ToString("R") ?? "",
-            definition.Targets?.MaxPerBoss?.ToString() ?? "",
-            string.Join(",", definition.Targets?.ExcludedTamedPrefabs ?? new List<string>()),
-            string.Join(",", definition.Targets?.ExtraPressuredPrefabs ?? new List<string>()),
-            definition.Pressure?.DamagePercentPerSecond?.ToString("R") ?? "",
-            definition.Pressure?.IncomingDamageMultiplier?.ToString("R") ?? "",
-            definition.Pressure?.OutgoingDamageMultiplier?.ToString("R") ?? "");
+            ObjectDB? objectDb = ObjectDB.instance;
+            hash = hash * 31 + (objectDb != null ? objectDb.GetInstanceID() : 0);
+            hash = hash * 31 + (objectDb?.m_items?.Count ?? -1);
+            return hash;
+        }
     }
 
     private static string TrimCloneSuffix(string? name)

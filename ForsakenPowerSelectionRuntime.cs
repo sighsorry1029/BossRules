@@ -76,16 +76,25 @@ internal static class ForsakenPowerSelectionRuntime
             return;
         }
 
-        TMP_Text hintText = EnsureGuardianPowerHint(hud);
         bool shouldShow = ShouldShowHudHint(hud, player);
-        hintText.gameObject.SetActive(shouldShow);
         if (!shouldShow)
         {
+            HideGuardianPowerHint(hud);
             return;
         }
 
+        TMP_Text hintText = EnsureGuardianPowerHint(hud);
+        if (!hintText.gameObject.activeSelf)
+        {
+            hintText.gameObject.SetActive(true);
+        }
+
         ApplyGuardianPowerHintLayout(hud, hintText);
-        hintText.text = GetCachedHintText();
+        string hint = GetCachedHintText();
+        if (!string.Equals(hintText.text, hint, StringComparison.Ordinal))
+        {
+            hintText.text = hint;
+        }
     }
 
     private static bool CanRotateSelection(Player? player)
@@ -208,6 +217,17 @@ internal static class ForsakenPowerSelectionRuntime
         hintRect.SetParent(hud.m_gpRoot, false);
         _guardianPowerHintHudInstanceId = hud.GetInstanceID();
         return _guardianPowerHintText;
+    }
+
+    private static void HideGuardianPowerHint(Hud hud)
+    {
+        if (_guardianPowerHintText != null &&
+            _guardianPowerHintHudInstanceId == hud.GetInstanceID() &&
+            _guardianPowerHintText.gameObject != null &&
+            _guardianPowerHintText.gameObject.activeSelf)
+        {
+            _guardianPowerHintText.gameObject.SetActive(false);
+        }
     }
 
     private static void ApplyGuardianPowerHintLayout(Hud hud, TMP_Text hintText)

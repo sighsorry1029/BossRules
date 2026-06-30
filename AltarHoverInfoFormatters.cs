@@ -7,8 +7,16 @@ namespace BossRules;
 
 internal static class OfferingBowlHoverInfoFormatter
 {
+    private const float HoverInfoCacheSeconds = 0.25f;
     private static readonly List<OfferingBowl> RegisteredOfferingBowls = new();
     private static readonly HashSet<int> RegisteredOfferingBowlIds = new();
+    private static readonly Dictionary<int, HoverInfoCacheEntry> HoverInfoCache = new();
+
+    private sealed class HoverInfoCacheEntry
+    {
+        public string Info { get; set; } = "";
+        public float ExpiresAt { get; set; }
+    }
 
     internal static string AppendInfo(string baseText, OfferingBowl? offeringBowl)
     {
@@ -17,7 +25,7 @@ internal static class OfferingBowlHoverInfoFormatter
             return baseText ?? "";
         }
 
-        string info = BuildInfo(offeringBowl);
+        string info = GetCachedInfo(offeringBowl);
         if (info.Length == 0)
         {
             return baseText ?? "";
@@ -51,6 +59,30 @@ internal static class OfferingBowlHoverInfoFormatter
         }
 
         return RegisteredOfferingBowls;
+    }
+
+    internal static void ClearRuntimeCaches()
+    {
+        HoverInfoCache.Clear();
+    }
+
+    private static string GetCachedInfo(OfferingBowl offeringBowl)
+    {
+        int instanceId = offeringBowl.GetInstanceID();
+        float now = Time.realtimeSinceStartup;
+        if (HoverInfoCache.TryGetValue(instanceId, out HoverInfoCacheEntry? cached) &&
+            cached.ExpiresAt > now)
+        {
+            return cached.Info;
+        }
+
+        string info = BuildInfo(offeringBowl);
+        HoverInfoCache[instanceId] = new HoverInfoCacheEntry
+        {
+            Info = info,
+            ExpiresAt = now + HoverInfoCacheSeconds
+        };
+        return info;
     }
 
     private static string BuildInfo(OfferingBowl offeringBowl)
@@ -170,14 +202,22 @@ internal static class OfferingBowlHoverInfoFormatter
 internal static class AltarItemStandHoverInfoFormatter
 {
     private const float RelevantOfferingBowlCacheSeconds = 1f;
+    private const float HoverInfoCacheSeconds = 0.25f;
     private static readonly ItemStand[] EmptyItemStands = Array.Empty<ItemStand>();
     private static readonly List<ItemStand> RegisteredItemStands = new();
     private static readonly HashSet<int> RegisteredItemStandIds = new();
     private static readonly Dictionary<int, RelevantOfferingBowlCacheEntry> RelevantOfferingBowlCache = new();
+    private static readonly Dictionary<int, HoverInfoCacheEntry> HoverInfoCache = new();
 
     private sealed class RelevantOfferingBowlCacheEntry
     {
         public OfferingBowl? OfferingBowl { get; set; }
+        public float ExpiresAt { get; set; }
+    }
+
+    private sealed class HoverInfoCacheEntry
+    {
+        public string Info { get; set; } = "";
         public float ExpiresAt { get; set; }
     }
 
@@ -198,7 +238,7 @@ internal static class AltarItemStandHoverInfoFormatter
             return baseText ?? "";
         }
 
-        string info = BuildInfo(itemStand);
+        string info = GetCachedInfo(itemStand);
         if (info.Length == 0)
         {
             return baseText ?? "";
@@ -223,6 +263,8 @@ internal static class AltarItemStandHoverInfoFormatter
     internal static void ClearRuntimeCaches()
     {
         RelevantOfferingBowlCache.Clear();
+        HoverInfoCache.Clear();
+        OfferingBowlHoverInfoFormatter.ClearRuntimeCaches();
     }
 
     internal static IReadOnlyList<ItemStand> FindRelevantItemStands(OfferingBowl offeringBowl)
@@ -412,6 +454,25 @@ internal static class AltarItemStandHoverInfoFormatter
             .Select(OfferingBowlHoverInfoFormatter.GetItemDisplayName)
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(StringComparer.Ordinal));
+    }
+
+    private static string GetCachedInfo(ItemStand itemStand)
+    {
+        int instanceId = itemStand.GetInstanceID();
+        float now = Time.realtimeSinceStartup;
+        if (HoverInfoCache.TryGetValue(instanceId, out HoverInfoCacheEntry? cached) &&
+            cached.ExpiresAt > now)
+        {
+            return cached.Info;
+        }
+
+        string info = BuildInfo(itemStand);
+        HoverInfoCache[instanceId] = new HoverInfoCacheEntry
+        {
+            Info = info,
+            ExpiresAt = now + HoverInfoCacheSeconds
+        };
+        return info;
     }
 
     private static void AddRelevantItemStands(Transform root, OfferingBowl offeringBowl, List<ItemStand> itemStands, HashSet<int> seenIds)
