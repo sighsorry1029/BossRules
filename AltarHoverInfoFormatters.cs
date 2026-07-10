@@ -66,6 +66,13 @@ internal static class OfferingBowlHoverInfoFormatter
         HoverInfoCache.Clear();
     }
 
+    internal static void ResetRuntimeState()
+    {
+        RegisteredOfferingBowls.Clear();
+        RegisteredOfferingBowlIds.Clear();
+        HoverInfoCache.Clear();
+    }
+
     private static string GetCachedInfo(OfferingBowl offeringBowl)
     {
         int instanceId = offeringBowl.GetInstanceID();
@@ -265,6 +272,15 @@ internal static class AltarItemStandHoverInfoFormatter
         RelevantOfferingBowlCache.Clear();
         HoverInfoCache.Clear();
         OfferingBowlHoverInfoFormatter.ClearRuntimeCaches();
+    }
+
+    internal static void ResetRuntimeState()
+    {
+        RegisteredItemStands.Clear();
+        RegisteredItemStandIds.Clear();
+        RelevantOfferingBowlCache.Clear();
+        HoverInfoCache.Clear();
+        OfferingBowlHoverInfoFormatter.ResetRuntimeState();
     }
 
     internal static IReadOnlyList<ItemStand> FindRelevantItemStands(OfferingBowl offeringBowl)

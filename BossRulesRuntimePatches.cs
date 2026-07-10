@@ -205,7 +205,7 @@ internal static class OfferingBowlDelayedSpawnBossAltarPatch
     {
         if (ZNet.instance != null && BossRulesConfig.ShouldCaptureAltarSpawnRefunds())
         {
-            AltarRuntime.FinalizeOfferingBowlBossSpawnAttempt(__instance, BossSpawnPointRef(__instance));
+            AltarRuntime.FinalizeOfferingBowlBossSpawnAttempt();
         }
     }
 }

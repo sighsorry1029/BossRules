@@ -10,12 +10,11 @@ internal static partial class ForsakenPowerRuntime
 {
     private static readonly object Sync = new();
 
-    private static List<ForsakenPowerDefinition>? _definition;
+    private static IReadOnlyList<ForsakenPowerDefinition>? _definition;
     private static bool _pendingApply;
     private static bool _lastEnabled;
-    private static string _lastAppliedSignature = "";
 
-    internal static void Configure(List<ForsakenPowerDefinition>? definition)
+    internal static void Configure(IReadOnlyList<ForsakenPowerDefinition>? definition)
     {
         lock (Sync)
         {
@@ -46,8 +45,8 @@ internal static partial class ForsakenPowerRuntime
         {
             _definition = null;
             RestoreSnapshotsNotOwnedByDataForgeLocked();
+            SnapshotsByHash.Clear();
             _pendingApply = false;
-            _lastAppliedSignature = "";
             _lastEnabled = false;
         }
     }
@@ -55,15 +54,11 @@ internal static partial class ForsakenPowerRuntime
     internal static void ProcessDeferredApply()
     {
         bool enabled = BossRulesConfig.IsForsakenPowerRulesEnabled();
-        string signature;
-        List<ForsakenPowerDefinition>? definition;
+        IReadOnlyList<ForsakenPowerDefinition>? definition;
         lock (Sync)
         {
             definition = _definition;
-            signature = enabled ? BuildDefinitionSignature(definition) : "<disabled>";
-            if (!_pendingApply &&
-                _lastEnabled == enabled &&
-                string.Equals(_lastAppliedSignature, signature, StringComparison.Ordinal))
+            if (!_pendingApply && _lastEnabled == enabled)
             {
                 return;
             }
@@ -78,7 +73,6 @@ internal static partial class ForsakenPowerRuntime
         {
             enabled = BossRulesConfig.IsForsakenPowerRulesEnabled();
             definition = _definition;
-            signature = enabled ? BuildDefinitionSignature(definition) : "<disabled>";
             RestoreSnapshotsNotOwnedByDataForgeLocked();
 
             if (enabled && definition is { Count: > 0 })
@@ -88,7 +82,6 @@ internal static partial class ForsakenPowerRuntime
 
             _pendingApply = false;
             _lastEnabled = enabled;
-            _lastAppliedSignature = signature;
         }
     }
 
@@ -104,7 +97,7 @@ internal static partial class ForsakenPowerRuntime
         return true;
     }
 
-    private static void ApplyDefinitionLocked(List<ForsakenPowerDefinition> definition)
+    private static void ApplyDefinitionLocked(IReadOnlyList<ForsakenPowerDefinition> definition)
     {
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
         HashSet<string> cleared = new(StringComparer.OrdinalIgnoreCase);
@@ -508,26 +501,6 @@ internal static partial class ForsakenPowerRuntime
     private static bool IsGameDataReady()
     {
         return ObjectDB.instance?.m_StatusEffects is { Count: > 0 };
-    }
-
-    private static string BuildDefinitionSignature(List<ForsakenPowerDefinition>? definition)
-    {
-        if (definition == null)
-        {
-            return "<none>";
-        }
-
-        return string.Join(
-            "\n",
-            definition.Select(power => string.Join(
-                "|",
-                power.Effect ?? "",
-                power.Time ?? "",
-                power.Attributes ?? "",
-                power.Stats != null ? "stats" : "",
-                power.StaminaDrainModifier != null ? "stamina" : "",
-                power.DamageTakenModifiers?.Count.ToString(CultureInfo.InvariantCulture) ?? "",
-                power.PercentageDamageModifiers?.Count.ToString(CultureInfo.InvariantCulture) ?? "")));
     }
 
     private static float[]? ParseFloatTuple(string? rawValue, string context, string fieldName, int minCount, int maxCount)

@@ -45,8 +45,7 @@ internal static partial class DespawnRulesManager
             string prefabNameHint,
             DespawnObservationSource source,
             float nextAttemptAt = 0f,
-            float expireAt = 0f,
-            int retryCount = 0)
+            float expireAt = 0f)
         {
             ZdoId = zdoId;
             PrefabHashHint = prefabHashHint;
@@ -54,7 +53,6 @@ internal static partial class DespawnRulesManager
             Source = source;
             NextAttemptAt = nextAttemptAt;
             ExpireAt = expireAt;
-            RetryCount = retryCount;
         }
 
         internal ZDOID ZdoId { get; }
@@ -63,10 +61,9 @@ internal static partial class DespawnRulesManager
         internal DespawnObservationSource Source { get; }
         internal float NextAttemptAt { get; }
         internal float ExpireAt { get; }
-        internal int RetryCount { get; }
     }
 
-    internal static void MarkBootstrapScanDirty(string reason)
+    internal static void MarkBootstrapScanDirty()
     {
         _pendingBootstrapScan = true;
     }
@@ -314,17 +311,13 @@ internal static partial class DespawnRulesManager
         float expireAt = preferred.Source == DespawnObservationSource.CreatedZdo
             ? Mathf.Max(current.ExpireAt, incoming.ExpireAt)
             : 0f;
-        int retryCount = preferred.Source == DespawnObservationSource.CreatedZdo
-            ? Math.Max(current.RetryCount, incoming.RetryCount)
-            : 0;
         return new PendingDespawnObservation(
             preferred.ZdoId,
             prefabHashHint,
             prefabNameHint,
             preferred.Source,
             nextAttemptAt,
-            expireAt,
-            retryCount);
+            expireAt);
     }
 
     private static int GetObservationPriority(DespawnObservationSource source)
@@ -508,8 +501,7 @@ internal static partial class DespawnRulesManager
             observation.PrefabNameHint,
             observation.Source,
             nowRealtime + CreatedZdoObservationRetryIntervalSeconds,
-            expireAt,
-            observation.RetryCount + 1);
+            expireAt);
         return true;
     }
 }

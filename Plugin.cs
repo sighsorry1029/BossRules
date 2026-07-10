@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -14,7 +15,7 @@ namespace BossRules;
 public sealed class BossRulesPlugin : BaseUnityPlugin
 {
     internal const string ModName = "BossRules";
-    internal const string ModVersion = "1.0.1";
+    internal const string ModVersion = "1.0.2";
     internal const string Author = "sighsorry";
     internal const string ModGUID = $"{Author}.{ModName}";
     internal const string AltarYamlFileName = $"{ModName}.altar.yml";
@@ -33,6 +34,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
     private CustomSyncedValue<string> _syncedForsakenPowersYaml = null!;
     private FileSystemWatcher? _watcher;
     private float _reloadDueAt = -1f;
+    private int _yamlReloadRequested;
     private ConfigEntry<Toggle> _lockConfiguration = null!;
     private IReadOnlyList<AltarConfigurationEntry> _altarEntries = Array.Empty<AltarConfigurationEntry>();
     private BossRuleConfigurationState _rulesConfiguration = BossRuleConfigurationState.Empty;
@@ -118,8 +120,10 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         _syncedForsakenPowersYaml.ValueChanged -= HandleSyncedForsakenPowersYamlChanged;
         _watcher?.Dispose();
         _watcher = null;
+        Interlocked.Exchange(ref _yamlReloadRequested, 0);
         AltarRuntime.Shutdown();
         BossStonePerPlayerRuntime.Shutdown();
+        ForsakenPowerSelectionRuntime.Shutdown();
         AltarReferenceGenerator.ResetAutoRefresh();
         BossRulesManager.ClearRuntimeState();
         BossRulesRuntime.Reset();
@@ -220,11 +224,6 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
 
     private void QueueYamlReload(object sender, FileSystemEventArgs args)
     {
-        if (!IsSourceOfTruth)
-        {
-            return;
-        }
-
         string fileName = Path.GetFileName(args.FullPath);
         if (!string.Equals(fileName, AltarYamlFileName, StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(fileName, RulesYamlFileName, StringComparison.OrdinalIgnoreCase) &&
@@ -233,11 +232,24 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
             return;
         }
 
-        _reloadDueAt = Time.realtimeSinceStartup + FileReloadDebounceSeconds;
+        Interlocked.Exchange(ref _yamlReloadRequested, 1);
     }
 
     private void ProcessQueuedYamlReload()
     {
+        if (Interlocked.Exchange(ref _yamlReloadRequested, 0) != 0)
+        {
+            _reloadDueAt = IsSourceOfTruth
+                ? Time.realtimeSinceStartup + FileReloadDebounceSeconds
+                : -1f;
+        }
+
+        if (!IsSourceOfTruth)
+        {
+            _reloadDueAt = -1f;
+            return;
+        }
+
         if (_reloadDueAt < 0f || Time.realtimeSinceStartup < _reloadDueAt)
         {
             return;
@@ -393,7 +405,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         }
 
         _rulesConfiguration = configuration;
-        BossRulesRuntime.Reload(BuildMergedRulesConfiguration());
+        BossRulesRuntime.Reload(_rulesConfiguration, _forsakenPowers);
         return true;
     }
 
@@ -405,23 +417,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         }
 
         _forsakenPowers = entries;
-        BossRulesRuntime.Reload(BuildMergedRulesConfiguration());
+        BossRulesRuntime.Reload(_rulesConfiguration, _forsakenPowers);
         return true;
-    }
-
-    private BossRuleConfigurationState BuildMergedRulesConfiguration()
-    {
-        BossRuleConfigurationState merged = new();
-        merged.DefaultDespawnRange = _rulesConfiguration.DefaultDespawnRange;
-        merged.DefaultDespawnDelaySeconds = _rulesConfiguration.DefaultDespawnDelaySeconds;
-        merged.DespawnRules.AddRange(_rulesConfiguration.DespawnRules);
-        merged.BossTamedPressureRules.AddRange(_rulesConfiguration.BossTamedPressureRules);
-        merged.ForsakenPowers.AddRange(_forsakenPowers);
-        merged.MessageDespawnStart = _rulesConfiguration.MessageDespawnStart;
-        merged.MessageDespawnReminder = _rulesConfiguration.MessageDespawnReminder;
-        merged.MessageDespawnCanceled = _rulesConfiguration.MessageDespawnCanceled;
-        merged.MessageBossTamedPressure = _rulesConfiguration.MessageBossTamedPressure;
-        merged.MessageForsakenPowerRotate = _rulesConfiguration.MessageForsakenPowerRotate;
-        return merged;
     }
 }

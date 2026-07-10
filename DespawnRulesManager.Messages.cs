@@ -75,7 +75,7 @@ internal static partial class DespawnRulesManager
 
             Player? player = Player.GetPlayer(recipientId);
             return player != null &&
-                   TryResolveMessageTargetPeerId(player, out _, out _);
+                   TryResolveMessageTargetPeerId(player, out _);
         }
 
         Player? localPlayer = Player.GetPlayer(recipientId);
@@ -103,7 +103,7 @@ internal static partial class DespawnRulesManager
 
         Player? player = Player.GetPlayer(recipientId);
         if (player != null &&
-            TryResolveMessageTargetPeerId(player, out long targetPeerId, out _))
+            TryResolveMessageTargetPeerId(player, out long targetPeerId))
         {
             ZRoutedRpc.instance.InvokeRoutedRPC(
                 targetPeerId,
@@ -116,10 +116,9 @@ internal static partial class DespawnRulesManager
         return false;
     }
 
-    private static bool TryResolveMessageTargetPeerId(Player player, out long targetPeerId, out string resolutionSource)
+    private static bool TryResolveMessageTargetPeerId(Player player, out long targetPeerId)
     {
         targetPeerId = 0L;
-        resolutionSource = "none";
         if (player == null)
         {
             return false;
@@ -130,7 +129,6 @@ internal static partial class DespawnRulesManager
         if (IsValidMessageTargetPeerId(candidatePeerId))
         {
             targetPeerId = candidatePeerId;
-            resolutionSource = "characterZdoUserId";
             return true;
         }
 
@@ -144,7 +142,6 @@ internal static partial class DespawnRulesManager
                     peer.m_characterID == characterId)
                 {
                     targetPeerId = peer.m_uid;
-                    resolutionSource = "peerCharacterId";
                     return true;
                 }
             }
@@ -157,7 +154,6 @@ internal static partial class DespawnRulesManager
             if (namedPeer != null && namedPeer.IsReady())
             {
                 targetPeerId = namedPeer.m_uid;
-                resolutionSource = "playerName";
                 return true;
             }
         }

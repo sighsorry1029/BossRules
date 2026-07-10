@@ -105,7 +105,7 @@
         <Compile Include="BossRulesConsoleCommands.cs"/>
         <Compile Include="AltarRuntime.cs"/>
         <Compile Include="AltarRuntime.Refunds.cs"/>
-        <Compile Include="AltarRuntimePatches.cs"/>
+        <Compile Include="BossRulesRuntimePatches.cs"/>
         <Compile Include="AltarLocationResolver.cs"/>
         <Compile Include="AltarHoverInfoFormatters.cs"/>
         <Compile Include="BossRulesDebugLog.cs"/>

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 namespace BossRules;
@@ -32,10 +31,6 @@ internal static class BossTamedPressureRuntime
 
     private sealed class Rule
     {
-        public HashSet<string> BossPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public HashSet<string> ExcludedBossPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public HashSet<string> ExcludedTamedPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public HashSet<string> ExtraPressuredPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<int> BossPrefabHashes { get; } = new();
         public HashSet<int> ExcludedBossPrefabHashes { get; } = new();
         public HashSet<int> ExcludedTamedPrefabHashes { get; } = new();
@@ -106,10 +101,18 @@ internal static class BossTamedPressureRuntime
         AdvanceGeneration();
         Rules.Clear();
         ClearTransientBuffers();
-        foreach (BossTamedPressureDefinition definition in definitions ?? Enumerable.Empty<BossTamedPressureDefinition>())
+        foreach (BossTamedPressureDefinition definition in definitions ?? Array.Empty<BossTamedPressureDefinition>())
         {
             Rules.Add(CompileRule(definition, message));
         }
+    }
+
+    internal static void ResetRuntimeState()
+    {
+        AdvanceGeneration();
+        Rules.Clear();
+        ClearTransientBuffers();
+        _characterPrefabCatalog = CharacterPrefabCatalog.Empty;
     }
 
     internal static void ExecuteServerTick()
@@ -205,10 +208,10 @@ internal static class BossTamedPressureRuntime
             Message = message ?? DefaultMessage
         };
 
-        AddAll(rule.BossPrefabs, rule.BossPrefabHashes, definition.BossPrefabs);
-        AddAll(rule.ExcludedBossPrefabs, rule.ExcludedBossPrefabHashes, definition.ExcludedBossPrefabs);
-        AddAll(rule.ExcludedTamedPrefabs, rule.ExcludedTamedPrefabHashes, targets?.ExcludedTamedPrefabs);
-        AddAll(rule.ExtraPressuredPrefabs, rule.ExtraPressuredPrefabHashes, targets?.ExtraPressuredPrefabs);
+        AddHashes(rule.BossPrefabHashes, definition.BossPrefabs);
+        AddHashes(rule.ExcludedBossPrefabHashes, definition.ExcludedBossPrefabs);
+        AddHashes(rule.ExcludedTamedPrefabHashes, targets?.ExcludedTamedPrefabs);
+        AddHashes(rule.ExtraPressuredPrefabHashes, targets?.ExtraPressuredPrefabs);
         return rule;
     }
 
@@ -304,7 +307,7 @@ internal static class BossTamedPressureRuntime
         bossZdos.Clear();
     }
 
-    private static int CollectTargetsNearBoss(
+    private static void CollectTargetsNearBoss(
         Rule rule,
         CharacterPrefabCatalog catalog,
         BossCandidate boss,
@@ -316,7 +319,7 @@ internal static class BossTamedPressureRuntime
         sectorObjects.Clear();
         if (ZDOMan.instance == null || ZoneSystem.instance == null)
         {
-            return 0;
+            return;
         }
 
         int sectorRange = Mathf.Max(0, Mathf.CeilToInt(rule.Range / ZoneSystem.c_ZoneSize) + 1);
@@ -342,9 +345,7 @@ internal static class BossTamedPressureRuntime
             nearbyTargets.Add(new TargetCandidate(candidate, position, distanceSqr, order++));
         }
 
-        int sectorObjectCount = sectorObjects.Count;
         sectorObjects.Clear();
-        return sectorObjectCount;
     }
 
     private static bool TrackTarget(
@@ -655,7 +656,7 @@ internal static class BossTamedPressureRuntime
             return;
         }
 
-        if (!SceneProximityQueries.TryFindNearestLivingPlayerInRangeXZ(targetPosition, Mathf.Max(rule.Range, 32f), out long playerId) ||
+        if (!SceneProximityQueries.TryFindNearestLivingServerPlayerInRangeXZ(targetPosition, Mathf.Max(rule.Range, 32f), out long playerId) ||
             playerId == 0L)
         {
             return;
@@ -715,7 +716,7 @@ internal static class BossTamedPressureRuntime
         TargetIdBuffer.Clear();
     }
 
-    private static void AddAll(HashSet<string> target, HashSet<int> hashes, IEnumerable<string>? values)
+    private static void AddHashes(HashSet<int> hashes, IEnumerable<string>? values)
     {
         if (values == null)
         {
@@ -727,7 +728,6 @@ internal static class BossTamedPressureRuntime
             string normalized = (value ?? "").Trim();
             if (normalized.Length > 0)
             {
-                target.Add(normalized);
                 hashes.Add(normalized.GetStableHashCode());
             }
         }

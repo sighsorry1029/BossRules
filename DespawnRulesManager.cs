@@ -134,6 +134,23 @@ internal static partial class DespawnRulesManager
         _defaultDespawnDelaySeconds = Mathf.Clamp(despawnDelaySeconds, 0f, 300f);
     }
 
+    internal static void ResetRuntimeState()
+    {
+        TrackedDespawnTargets.Clear();
+        ScheduledDespawnChecks.Clear();
+        PendingDespawnDetachPersists.Clear();
+        PendingDespawnRemovals.Clear();
+        PendingDespawnDetachPersistRemovals.Clear();
+        PendingDespawnObservations.Clear();
+        PendingDespawnObservationRemovals.Clear();
+        PendingDespawnObservationUpdates.Clear();
+        BootstrapScanBuffer.Clear();
+        _nextDespawnTrackingRefreshAt = 0f;
+        _pendingBootstrapScan = true;
+        _lastObservedDespawnLookupVersion = -1;
+        DespawnClock.Restart();
+    }
+
     internal static void ExecuteServerTick()
     {
         if (!BossRulesPlugin.IsRuntimeServer())
@@ -358,12 +375,12 @@ internal static partial class DespawnRulesManager
         if (despawnRange <= 0f)
         {
             state.ResetCountdown();
-            ScheduleTrackedDespawnCheck(zdoId, state, nowSeconds + GetIdleCheckIntervalSeconds());
+            ScheduleTrackedDespawnCheck(zdoId, state, nowSeconds + DespawnIdleCheckIntervalSeconds);
             return;
         }
 
         Vector3 probePoint = loadedCharacter != null ? loadedCharacter.GetCenterPoint() : zdo.GetPosition();
-        bool hasPlayerInRange = SceneProximityQueries.TryFindAnyLivingPlayerInRangeXZ(probePoint, despawnRange, out long interestedPlayerId);
+        bool hasPlayerInRange = SceneProximityQueries.TryFindAnyLivingServerPlayerInRangeXZ(probePoint, despawnRange, out long interestedPlayerId);
         if (hasPlayerInRange)
         {
             if (interestedPlayerId != 0L)
@@ -374,7 +391,7 @@ internal static partial class DespawnRulesManager
             if (state.NoPlayerSince >= 0d)
             {
                 long cancelRecipientId = interestedPlayerId;
-                if (SceneProximityQueries.TryFindNearestLivingPlayerInRangeXZ(probePoint, despawnRange, out long nearestPlayerId))
+                if (SceneProximityQueries.TryFindNearestLivingServerPlayerInRangeXZ(probePoint, despawnRange, out long nearestPlayerId))
                 {
                     cancelRecipientId = nearestPlayerId;
                 }
@@ -383,7 +400,7 @@ internal static partial class DespawnRulesManager
             }
 
             state.ResetCountdown();
-            ScheduleTrackedDespawnCheck(zdoId, state, nowSeconds + GetIdleCheckIntervalSeconds());
+            ScheduleTrackedDespawnCheck(zdoId, state, nowSeconds + DespawnIdleCheckIntervalSeconds);
             return;
         }
 
@@ -415,7 +432,7 @@ internal static partial class DespawnRulesManager
             state.LastAnnouncedRemainingSeconds = remainingSeconds;
         }
 
-        ScheduleTrackedDespawnCheck(zdoId, state, nowSeconds + GetCountdownCheckIntervalSeconds());
+        ScheduleTrackedDespawnCheck(zdoId, state, nowSeconds + DespawnCountdownCheckIntervalSeconds);
     }
 
     private static IReadOnlyCollection<DespawnRefundDrop> ResolveRefundsForExecution(ZDO zdo, TrackedDespawnState state)
@@ -504,7 +521,7 @@ internal static partial class DespawnRulesManager
             return;
         }
 
-        if (SceneProximityQueries.TryFindAnyLivingPlayerInRangeXZ(persist.ProbePoint, despawnRange, out long interestedPlayerId))
+        if (SceneProximityQueries.TryFindAnyLivingServerPlayerInRangeXZ(persist.ProbePoint, despawnRange, out long interestedPlayerId))
         {
             state.LastInterestedPlayerId = interestedPlayerId;
             return;
@@ -545,7 +562,7 @@ internal static partial class DespawnRulesManager
             return;
         }
 
-        if (!SceneProximityQueries.TryFindAnyLivingPlayerInRangeXZ(point, despawnRange, out long interestedPlayerId))
+        if (!SceneProximityQueries.TryFindAnyLivingServerPlayerInRangeXZ(point, despawnRange, out long interestedPlayerId))
         {
             return;
         }
@@ -632,16 +649,6 @@ internal static partial class DespawnRulesManager
     private static long QuantizeScheduledCheck(double scheduledTime)
     {
         return Math.Max(0L, (long)Math.Ceiling(scheduledTime * 1000d));
-    }
-
-    private static double GetIdleCheckIntervalSeconds()
-    {
-        return DespawnIdleCheckIntervalSeconds;
-    }
-
-    private static double GetCountdownCheckIntervalSeconds()
-    {
-        return DespawnCountdownCheckIntervalSeconds;
     }
 
     private static double GetCurrentDespawnClockSeconds()

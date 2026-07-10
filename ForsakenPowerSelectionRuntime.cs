@@ -42,6 +42,24 @@ internal static class ForsakenPowerSelectionRuntime
         _unlockedGuardianPowersDirty = true;
     }
 
+    internal static void Shutdown()
+    {
+        if (_guardianPowerHintText != null && _guardianPowerHintText.gameObject != null)
+        {
+            _guardianPowerHintText.gameObject.SetActive(false);
+            UnityEngine.Object.Destroy(_guardianPowerHintText.gameObject);
+        }
+
+        _guardianPowerHintText = null;
+        _guardianPowerHintHudInstanceId = 0;
+        CachedUnlockedGuardianPowers.Clear();
+        _cachedUnlockedGuardianPowersPlayerInstanceId = 0;
+        _unlockedGuardianPowersDirty = true;
+        _cachedHintShortcut = default;
+        _cachedHintRotateLabel = "";
+        _cachedHintText = "";
+    }
+
     internal static void TryRotateSelection(Player? player)
     {
         if (!CanRotateSelection(player))

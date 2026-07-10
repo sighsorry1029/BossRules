@@ -75,7 +75,6 @@ internal sealed class BossRuleConfigurationState
     internal float DefaultDespawnDelaySeconds { get; set; } = 90f;
     internal List<BossDespawnDefinition> DespawnRules { get; } = new();
     internal List<BossTamedPressureDefinition> BossTamedPressureRules { get; } = new();
-    internal List<ForsakenPowerDefinition> ForsakenPowers { get; } = new();
     internal string? MessageDespawnStart { get; set; }
     internal string? MessageDespawnReminder { get; set; }
     internal string? MessageDespawnCanceled { get; set; }
@@ -333,12 +332,6 @@ internal static class BossRuleConfiguration
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         return normalized is { Count: > 0 } ? normalized : null;
-    }
-
-    private static string? NormalizeOptionalString(string? value)
-    {
-        string normalized = (value ?? "").Trim();
-        return normalized.Length > 0 ? normalized : null;
     }
 
 }

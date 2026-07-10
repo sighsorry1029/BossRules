@@ -47,7 +47,9 @@ internal static class BossRulesRuntime
     private static BossRuleConfigurationState _configuration = BossRuleConfigurationState.Empty;
     private static int _despawnLookupVersion;
 
-    internal static void Reload(BossRuleConfigurationState configuration)
+    internal static void Reload(
+        BossRuleConfigurationState configuration,
+        IReadOnlyList<ForsakenPowerDefinition> forsakenPowers)
     {
         lock (Sync)
         {
@@ -61,7 +63,7 @@ internal static class BossRulesRuntime
             DespawnRulesManager.ConfigureDefaults(
                 _configuration.DefaultDespawnRange,
                 _configuration.DefaultDespawnDelaySeconds);
-            DespawnRulesManager.MarkBootstrapScanDirty("boss rules reload");
+            DespawnRulesManager.MarkBootstrapScanDirty();
             DespawnRulesManager.ConfigureMessages(
                 _configuration.MessageDespawnStart,
                 _configuration.MessageDespawnReminder,
@@ -69,7 +71,7 @@ internal static class BossRulesRuntime
             BossTamedPressureRuntime.Configure(
                 _configuration.BossTamedPressureRules,
                 _configuration.MessageBossTamedPressure);
-            ForsakenPowerRuntime.Configure(_configuration.ForsakenPowers);
+            ForsakenPowerRuntime.Configure(forsakenPowers);
         }
     }
 
@@ -85,9 +87,10 @@ internal static class BossRulesRuntime
             _cachedGameDataSignatureDirty = true;
             _bossCatalog = BossCatalog.Empty;
             _despawnLookupVersion++;
+            DespawnRulesManager.ResetRuntimeState();
             DespawnRulesManager.ConfigureDefaults(64f, 90f);
             DespawnRulesManager.ConfigureMessages(null, null, null);
-            BossTamedPressureRuntime.Configure(Array.Empty<BossTamedPressureDefinition>(), null);
+            BossTamedPressureRuntime.ResetRuntimeState();
             ForsakenPowerRuntime.Reset();
         }
     }

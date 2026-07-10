@@ -15,6 +15,7 @@ internal static partial class AltarRuntime
     private static readonly Dictionary<ItemStand, string> LooseItemStandAuthoredPathsByInstance = new();
     private static bool _pendingGameDataReapply;
     private static bool _loggedPendingGameDataWait;
+    private static int _configurationGeneration;
 
     private sealed class AuthoredItemStandSlotTemplate
     {
@@ -47,6 +48,7 @@ internal static partial class AltarRuntime
     {
         lock (Sync)
         {
+            AdvanceConfigurationGeneration();
             ActiveEntriesByPrefab.Clear();
             AuthoredItemStandSlotsByPrefab.Clear();
             LooseItemStandAuthoredPathsByInstance.Clear();
@@ -92,7 +94,11 @@ internal static partial class AltarRuntime
             ActiveEntriesByPrefab.Clear();
             AuthoredItemStandSlotsByPrefab.Clear();
             LooseItemStandAuthoredPathsByInstance.Clear();
-            AltarItemStandHoverInfoFormatter.ClearRuntimeCaches();
+            PendingAltarBossSpawns.Clear();
+            PendingAltarBossSpawnRemovals.Clear();
+            _nextAltarSpawnMarkerRetryAt = 0f;
+            AltarItemStandHoverInfoFormatter.ResetRuntimeState();
+            AltarLocationResolver.ResetRuntimeState();
             _pendingGameDataReapply = false;
             _loggedPendingGameDataWait = false;
         }
@@ -225,6 +231,11 @@ internal static partial class AltarRuntime
             }
 
             BossRulesDebugLog.Client($"Altar loose offering bowl context prefab={prefabName} root={root.name} bowl={offeringBowl.name}.");
+            if (IsOfferingBowlReconcileCurrent(offeringBowl, root, prefabName))
+            {
+                return;
+            }
+
             ReconcileRootLocked(root, prefabName);
         }
     }
@@ -370,7 +381,7 @@ internal static partial class AltarRuntime
         }
     }
 
-    internal static void FinalizeOfferingBowlBossSpawnAttempt(OfferingBowl? offeringBowl, Vector3 spawnPoint)
+    internal static void FinalizeOfferingBowlBossSpawnAttempt()
     {
         if (ZNet.instance == null)
         {
@@ -558,16 +569,17 @@ internal static partial class AltarRuntime
         ItemStand[] childItemStands = root.GetComponentsInChildren<ItemStand>(true);
         CaptureSnapshots(offeringBowls, childItemStands);
         RestoreComponents(offeringBowls, childItemStands);
+        OfferingBowl? offeringBowl = offeringBowls.FirstOrDefault(bowl => bowl != null);
 
         if (!BossRulesConfig.IsAltarRulesEnabled() ||
             !ActiveEntriesByPrefab.TryGetValue(normalizedPrefab, out List<AltarConfigurationEntry>? entries))
         {
             BossRulesDebugLog.Client(
                 $"Altar reconcile restore-only prefab={normalizedPrefab} root={root.name} enabled={BossRulesConfig.IsAltarRulesEnabled()} configured={ActiveEntriesByPrefab.ContainsKey(normalizedPrefab)} bowls={offeringBowls.Length} childItemStands={childItemStands.Length}.");
+            MarkOfferingBowlsReconciled(offeringBowls, root, normalizedPrefab);
             return;
         }
 
-        OfferingBowl? offeringBowl = offeringBowls.FirstOrDefault(bowl => bowl != null);
         Dictionary<string, ItemStand> childItemStandsByPath = BuildItemStandLookup(root, childItemStands);
         BossRulesDebugLog.Client(
             $"Altar reconcile applying prefab={normalizedPrefab} root={root.name} entries={entries.Count} bowls={offeringBowls.Length} childItemStands={childItemStands.Length} childPaths={childItemStandsByPath.Count} offeringBowl={(offeringBowl != null ? offeringBowl.name : "<none>")}.");
@@ -583,6 +595,52 @@ internal static partial class AltarRuntime
             {
                 List<ItemStand> relevantItemStands = GetRelevantItemStands(offeringBowl, childItemStands);
                 ApplyConfiguredItemStands(entry.ItemStands, relevantItemStands, childItemStandsByPath, normalizedPrefab, root, offeringBowl);
+            }
+        }
+
+        MarkOfferingBowlsReconciled(offeringBowls, root, normalizedPrefab);
+    }
+
+    private static bool IsOfferingBowlReconcileCurrent(OfferingBowl offeringBowl, Transform root, string prefabName)
+    {
+        OfferingBowlRuntimeState? state = offeringBowl.GetComponent<OfferingBowlRuntimeState>();
+        return state != null &&
+               state.ReconcileGeneration == _configurationGeneration &&
+               state.ReconciledRootInstanceId == root.GetInstanceID() &&
+               state.ReconciledWithAltarRulesEnabled == BossRulesConfig.IsAltarRulesEnabled() &&
+               string.Equals(state.ReconciledPrefabName, prefabName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void MarkOfferingBowlsReconciled(
+        IEnumerable<OfferingBowl> offeringBowls,
+        Transform root,
+        string prefabName)
+    {
+        bool altarRulesEnabled = BossRulesConfig.IsAltarRulesEnabled();
+        int rootInstanceId = root.GetInstanceID();
+        foreach (OfferingBowl offeringBowl in offeringBowls)
+        {
+            if (offeringBowl == null)
+            {
+                continue;
+            }
+
+            OfferingBowlRuntimeState state = GetOrAddOfferingBowlRuntimeState(offeringBowl);
+            state.ReconcileGeneration = _configurationGeneration;
+            state.ReconciledRootInstanceId = rootInstanceId;
+            state.ReconciledPrefabName = prefabName;
+            state.ReconciledWithAltarRulesEnabled = altarRulesEnabled;
+        }
+    }
+
+    private static void AdvanceConfigurationGeneration()
+    {
+        unchecked
+        {
+            _configurationGeneration++;
+            if (_configurationGeneration <= 0)
+            {
+                _configurationGeneration = 1;
             }
         }
     }

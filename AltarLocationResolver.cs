@@ -12,8 +12,17 @@ internal static class AltarLocationResolver
     private static readonly Dictionary<ZDOID, string> RuntimeLocationProxyPrefabsByZdoId = new();
     private static readonly int LocationProxyResolvedPrefabZdoKey = $"{BossRulesPlugin.ModName}.location_proxy_prefab".GetStableHashCode();
     private static readonly int ExpandWorldDataLocationReferenceHash = "locationreference".GetStableHashCode();
-    private static bool _expandWorldDataCurrentLocationFieldResolved;
+    private static int _expandWorldDataAssemblyCountAtLastResolve = -1;
     private static FieldInfo? _expandWorldDataCurrentLocationField;
+
+    internal static void ResetRuntimeState()
+    {
+        LocationPrefabNamesByHash.Clear();
+        RuntimeLocationProxyPrefabsByInstance.Clear();
+        RuntimeLocationProxyPrefabsByZdoId.Clear();
+        _expandWorldDataAssemblyCountAtLastResolve = -1;
+        _expandWorldDataCurrentLocationField = null;
+    }
 
     internal static void RecordLocationProxyResolvedPrefab(LocationProxy? proxy, string prefabName)
     {
@@ -216,7 +225,6 @@ internal static class AltarLocationResolver
             return true;
         }
 
-        LocationPrefabNamesByHash[locationHash] = "";
         return false;
     }
 
@@ -283,11 +291,13 @@ internal static class AltarLocationResolver
     private static bool TryGetExpandWorldDataCurrentLocationPrefabName(out string prefabName)
     {
         prefabName = "";
-        if (!_expandWorldDataCurrentLocationFieldResolved)
+        int loadedAssemblyCount = AppDomain.CurrentDomain.GetAssemblies().Length;
+        if (_expandWorldDataCurrentLocationField == null &&
+            _expandWorldDataAssemblyCountAtLastResolve != loadedAssemblyCount)
         {
             Type? locationSpawningType = FindLoadedType("ExpandWorldData.LocationSpawning", "ExpandWorldData");
             _expandWorldDataCurrentLocationField = locationSpawningType?.GetField("CurrentLocation", BindingFlags.Public | BindingFlags.Static);
-            _expandWorldDataCurrentLocationFieldResolved = true;
+            _expandWorldDataAssemblyCountAtLastResolve = loadedAssemblyCount;
         }
 
         try

@@ -34,8 +34,6 @@ internal static class BossStonePerPlayerRuntime
         public float NextRetryAt { get; set; }
     }
 
-    private static readonly AccessTools.FieldRef<ItemStand, ZNetView> ItemStandNviewRef =
-        AccessTools.FieldRefAccess<ItemStand, ZNetView>("m_nview");
     private static readonly AccessTools.FieldRef<ZRoutedRpc, long> RoutedRpcIdRef =
         AccessTools.FieldRefAccess<ZRoutedRpc, long>("m_id");
 
@@ -80,11 +78,6 @@ internal static class BossStonePerPlayerRuntime
     {
         _registeredRpcInstance = null;
         PendingBossStoneResetRequests.Clear();
-    }
-
-    internal static bool ShouldHandle(ItemStand? itemStand)
-    {
-        return TryResolveBossStoneHandle(itemStand, out _);
     }
 
     internal static bool TryRequestReset(string exactPlayerName, out string message)
@@ -227,7 +220,7 @@ internal static class BossStonePerPlayerRuntime
 
         long requestId = _nextBossStoneSacrificeRequestId++;
 
-        if (!TryApplyLocalBossStoneSacrifice(localPlayer, bossStone, item, requestId))
+        if (!TryApplyLocalBossStoneSacrifice(localPlayer, bossStone, item))
         {
             result = true;
             return true;
@@ -299,16 +292,6 @@ internal static class BossStonePerPlayerRuntime
         return Player.m_localPlayer.HaveUniqueKey(playerKey);
     }
 
-    internal static bool HasUnlockedGuardianPower(Player? player, string guardianPowerName)
-    {
-        if (player == null || string.IsNullOrWhiteSpace(guardianPowerName))
-        {
-            return false;
-        }
-
-        return player.HaveUniqueKey(PlayerKeyPrefix + guardianPowerName.Trim());
-    }
-
     internal static List<string> GetUnlockedGuardianPowerNames(Player? player)
     {
         if (player == null)
@@ -365,38 +348,7 @@ internal static class BossStonePerPlayerRuntime
         return false;
     }
 
-    private static bool CanAcceptConfiguredSacrifice(ItemStand itemStand, string itemPrefabName)
-    {
-        if (itemStand == null || string.IsNullOrWhiteSpace(itemPrefabName))
-        {
-            return false;
-        }
-
-        List<ItemDrop>? supportedItems = itemStand.m_supportedItems;
-        if (supportedItems == null || supportedItems.Count == 0)
-        {
-            return false;
-        }
-
-        string normalizedItemPrefabName = itemPrefabName.Trim();
-        foreach (ItemDrop supportedItem in supportedItems)
-        {
-            if (supportedItem == null)
-            {
-                continue;
-            }
-
-            string supportedPrefabName = supportedItem.gameObject != null ? supportedItem.gameObject.name : supportedItem.name;
-            if (string.Equals(normalizedItemPrefabName, supportedPrefabName, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool TryApplyLocalBossStoneSacrifice(Player localPlayer, BossStone bossStone, ItemDrop.ItemData item, long requestId)
+    private static bool TryApplyLocalBossStoneSacrifice(Player localPlayer, BossStone bossStone, ItemDrop.ItemData item)
     {
         if (!TryConsumeLocalBossStoneSacrifice(localPlayer, item))
         {
@@ -511,8 +463,7 @@ internal static class BossStonePerPlayerRuntime
     private static bool IsPerPlayerBossStone(BossStone? bossStone)
     {
         Location? location = GetBossStoneLocation(bossStone);
-        return location != null &&
-               PerPlayerBossStoneLocationPrefabs.Contains(Utils.GetPrefabName(location.gameObject.name));
+        return location != null && IsPerPlayerBossStoneLocation(location);
     }
 
     private static string GetPlayerKey(BossStone bossStone)
@@ -554,15 +505,6 @@ internal static class BossStonePerPlayerRuntime
         return false;
     }
 
-    private static bool IsLocalPlayerInsideTemple(BossStone bossStone)
-    {
-        Player? localPlayer = Player.m_localPlayer;
-        Location? location = GetBossStoneLocation(bossStone);
-        return localPlayer != null &&
-               location != null &&
-               location.IsInside(localPlayer.transform.position, 0f, false);
-    }
-
     private static bool TryBroadcastSacrifice(BossStone bossStone, long requestId)
     {
         EnsureRpcRegistered();
@@ -575,18 +517,6 @@ internal static class BossStonePerPlayerRuntime
         return true;
     }
 
-    private static ZNetView? GetItemStandZNetView(ItemStand? itemStand)
-    {
-        if (itemStand == null)
-        {
-            return null;
-        }
-
-        return itemStand.m_netViewOverride != null
-            ? itemStand.m_netViewOverride
-            : ItemStandNviewRef(itemStand) ?? itemStand.GetComponent<ZNetView>();
-    }
-
     private static void OnBossStoneSacrificeRequestRpc(long sender, long requestId, string playerKey, Vector3 bossStonePosition)
     {
         bool validKey = TryNormalizePlayerKey(playerKey, out string normalizedPlayerKey);
@@ -596,7 +526,16 @@ internal static class BossStonePerPlayerRuntime
                               location != null &&
                               location.IsInside(localPlayer.transform.position, 0f, false);
 
-        if (!validKey || localPlayer == null || location == null || !insideLocation)
+        if (!BossRulesConfig.IsPerPlayerBossStonesEnabled() ||
+            sender == 0L ||
+            requestId <= 0L ||
+            !validKey ||
+            localPlayer == null ||
+            location == null ||
+            !insideLocation ||
+            !location.IsInside(bossStonePosition, 0f, false) ||
+            !IsPerPlayerBossStoneLocation(location) ||
+            !LocationSupportsPlayerKey(location, normalizedPlayerKey))
         {
             return;
         }
@@ -614,8 +553,10 @@ internal static class BossStonePerPlayerRuntime
     {
         if (ZRoutedRpc.instance == null ||
             ZNet.instance == null ||
-            !ZNet.instance.IsServer())
+            !ZNet.instance.IsServer() ||
+            !IsAdminRequestSender(sender))
         {
+            SendBossStoneResetStatus(sender, "Boss stone reset failed: server administrator permission is required.");
             return;
         }
 
@@ -663,7 +604,8 @@ internal static class BossStonePerPlayerRuntime
             ZNet.instance == null ||
             !ZNet.instance.IsServer() ||
             !PendingBossStoneResetRequests.TryGetValue(requestId, out PendingBossStoneResetRequest? request) ||
-            request == null)
+            request == null ||
+            !IsExpectedResetAckSender(request, sender))
         {
             return;
         }
@@ -684,6 +626,59 @@ internal static class BossStonePerPlayerRuntime
         Console.instance?.Print(message);
     }
 
+    private static bool IsPerPlayerBossStoneLocation(Location location)
+    {
+        return location != null &&
+               PerPlayerBossStoneLocationPrefabs.Contains(Utils.GetPrefabName(location.gameObject.name));
+    }
+
+    private static bool LocationSupportsPlayerKey(Location location, string playerKey)
+    {
+        if (!TryNormalizePlayerKey(playerKey, out string normalizedPlayerKey))
+        {
+            return false;
+        }
+
+        foreach (BossStone bossStone in location.GetComponentsInChildren<BossStone>(true))
+        {
+            if (bossStone != null &&
+                string.Equals(GetPlayerKey(bossStone), normalizedPlayerKey, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsAdminRequestSender(long sender)
+    {
+        if (ZNet.instance == null || !ZNet.instance.IsServer())
+        {
+            return false;
+        }
+
+        if (IsServerRoutedSender(sender))
+        {
+            return true;
+        }
+
+        ZNetPeer? peer = ZNet.instance.GetPeer(sender);
+        string hostName = peer?.m_socket?.GetHostName() ?? "";
+        return hostName.Length > 0 && ZNet.instance.IsAdmin(hostName);
+    }
+
+    private static bool IsExpectedResetAckSender(PendingBossStoneResetRequest request, long sender)
+    {
+        if (TryGetHostedLocalPlayerName(out string hostedLocalPlayerName) &&
+            string.Equals(request.TargetPlayerName, hostedLocalPlayerName, StringComparison.Ordinal))
+        {
+            return IsServerRoutedSender(sender);
+        }
+
+        ZNetPeer? targetPeer = ZNet.instance?.GetPeerByPlayerName(request.TargetPlayerName);
+        return targetPeer != null && targetPeer.m_uid == sender;
+    }
 
     private static bool TryGetHostedLocalPlayerName(out string hostedLocalPlayerName)
     {

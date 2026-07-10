@@ -95,6 +95,9 @@ internal static class DataForgeStatusEffectBridge
         StatusEffectOverridesWillApplyHandler = null;
         StatusEffectOverridesAppliedHandler = null;
         Subscribed = false;
+        NextResolveAt = 0f;
+        InvokeWarningLogged = false;
+        SubscriptionWarningLogged = false;
     }
 
     private static void TryResolveAndSubscribe()

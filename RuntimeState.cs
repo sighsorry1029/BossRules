@@ -44,6 +44,10 @@ internal sealed class OfferingBowlRuntimeState : MonoBehaviour
     public float RespawnMinutes { get; set; }
     public long LocalLastUseTicks { get; set; }
     public string? PendingRefundPayload { get; set; }
+    public int ReconcileGeneration { get; set; } = -1;
+    public int ReconciledRootInstanceId { get; set; }
+    public string ReconciledPrefabName { get; set; } = "";
+    public bool ReconciledWithAltarRulesEnabled { get; set; }
 }
 
 internal sealed class ItemStandRuntimeState : MonoBehaviour
