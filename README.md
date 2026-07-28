@@ -46,11 +46,13 @@ Files:
 
 - `BossRules.altar.yml`: boss altar and boss item stand overrides.
 - `BossRules.altar.reference.yml`: generated reference for loaded boss altar and boss stone prefabs.
-- `BossRules.yml`: boss despawn, boss tamed pressure, and localization rules.
+- `BossRules.yml`: boss despawn and boss tamed pressure rules.
 - `BossRules.forsakenPowers.yml`: Forsaken Power stat edits in a DataForge-compatible row format.
 - `sighsorry.BossRules.cfg`: synced BepInEx feature toggles.
 
 Server admins should edit the YAML on the server or host. Synced YAML is pushed to clients automatically.
+Optional `BossRules.<Language>.yml` or `.json` message translations are discovered recursively under `BepInEx`.
+The release package includes `BossRules.English.yml` as an editable translation template.
 
 ## Boss Altars
 
@@ -71,7 +73,6 @@ BossRules intentionally does not own general location editing, object drops, run
 
 - `despawn`: default range/delay plus compact rows in `prefab, despawnRange, despawnDelay, refunds` format.
 - `bossTamedPressure`: a global rule for tamed creatures near bosses.
-- `localization`: boss despawn, tame pressure, and remote power selection messages.
 
 `BossRules.forsakenPowers.yml` controls selected Forsaken Power stat edits. Its top-level list is intentionally compatible with DataForge `effects.yml` rows.
 
@@ -95,6 +96,22 @@ Refund values:
 - `false`: no refund
 
 Refunds drop at the original `OfferingBowl` position when possible. Bosses from `CreatureSpawner`, `SpawnSystem`, or other world sources do not receive altar refunds just because they died near an altar.
+
+## Localization
+
+BossRules includes English and Korean message translations. Add overrides in `BossRules.<Language>.yml` or `.json`; the file name uses Valheim's language name, for example `BossRules.Korean.yml`.
+
+```yaml
+bossrules_message_despawn_start: "{name} will despawn in {seconds}s unless someone returns."
+bossrules_message_despawn_reminder: "{name} will despawn in {seconds}s."
+bossrules_message_despawn_canceled: "{name} despawn canceled."
+bossrules_message_boss_tamed_pressure: "Tamed creatures near a boss are weakened."
+bossrules_message_forsaken_power_rotate: "Rotate"
+```
+
+Embedded English is the fallback for missing message keys. Despawn names are resolved on the receiving client in this order: the client's current localized character name, its English localized name, then the prefab name.
+
+The former `localization:` section in `BossRules.yml` is deprecated and ignored so older files still load; new default files no longer contain it.
 
 ## Forsaken Powers
 

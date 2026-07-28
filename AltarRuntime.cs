@@ -11,11 +11,14 @@ internal static partial class AltarRuntime
     private static readonly int OfferingBowlLastUseTicksKey = $"{BossRulesPlugin.ModName}.offering_bowl_last_use_ticks".GetStableHashCode();
     private static readonly Dictionary<string, List<AltarConfigurationEntry>> ActiveEntriesByPrefab = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<Location, string> RegisteredLocationPrefabs = new();
+    private static readonly Dictionary<OfferingBowl, string> RegisteredQueenDungeonOfferingBowls = new();
+    private static readonly Dictionary<Room, DungeonGenerator> PendingQueenDungeonRooms = new();
     private static readonly Dictionary<string, List<AuthoredItemStandSlotTemplate>> AuthoredItemStandSlotsByPrefab = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<ItemStand, string> LooseItemStandAuthoredPathsByInstance = new();
     private static bool _pendingGameDataReapply;
     private static bool _loggedPendingGameDataWait;
     private static int _configurationGeneration;
+    private static float _nextQueenDungeonRoomContextRetryAt;
 
     private sealed class AuthoredItemStandSlotTemplate
     {
@@ -74,6 +77,7 @@ internal static partial class AltarRuntime
             BossRulesDebugLog.Client(
                 $"Altar reload entries={entries.Count} activePrefabs={ActiveEntriesByPrefab.Count} gameDataReady={IsGameDataReady()} registeredLocations={RegisteredLocationPrefabs.Count}.");
             ReapplyRegisteredLocationsLocked();
+            ReapplyRegisteredQueenDungeonOfferingBowlsLocked();
         }
     }
 
@@ -90,15 +94,27 @@ internal static partial class AltarRuntime
                 }
             }
 
+            foreach (OfferingBowl offeringBowl in RegisteredQueenDungeonOfferingBowls.Keys.ToList())
+            {
+                if (offeringBowl != null)
+                {
+                    RestoreRoot(offeringBowl.transform);
+                }
+            }
+
             RegisteredLocationPrefabs.Clear();
+            RegisteredQueenDungeonOfferingBowls.Clear();
+            PendingQueenDungeonRooms.Clear();
             ActiveEntriesByPrefab.Clear();
             AuthoredItemStandSlotsByPrefab.Clear();
             LooseItemStandAuthoredPathsByInstance.Clear();
             PendingAltarBossSpawns.Clear();
             PendingAltarBossSpawnRemovals.Clear();
             _nextAltarSpawnMarkerRetryAt = 0f;
+            _nextQueenDungeonRoomContextRetryAt = 0f;
             AltarItemStandHoverInfoFormatter.ResetRuntimeState();
             AltarLocationResolver.ResetRuntimeState();
+            QueenDungeonAltarSupport.ResetRuntimeState();
             _pendingGameDataReapply = false;
             _loggedPendingGameDataWait = false;
         }
@@ -129,6 +145,7 @@ internal static partial class AltarRuntime
             BossRulesDebugLog.Client(
                 $"Altar deferred reapply running. {DescribeGameDataState()} registeredLocations={RegisteredLocationPrefabs.Count} activePrefabs={ActiveEntriesByPrefab.Count}.");
             ReapplyRegisteredLocationsLocked();
+            ReapplyRegisteredQueenDungeonOfferingBowlsLocked();
             ReapplyLoadedLooseOfferingBowlsLocked();
             ReapplyLoadedLooseItemStandsLocked();
         }
@@ -197,6 +214,100 @@ internal static partial class AltarRuntime
         }
     }
 
+    internal static void RegisterQueenDungeonRoom(
+        Room? room,
+        DungeonGenerator? generator,
+        string prefabName)
+    {
+        if (room == null || generator == null)
+        {
+            return;
+        }
+
+        lock (Sync)
+        {
+            string normalizedPrefab = (prefabName ?? "").Trim();
+            if (!QueenDungeonAltarSupport.IsSupportedLocationPrefab(normalizedPrefab) &&
+                !QueenDungeonAltarSupport.TryResolveGeneratorLocationPrefab(
+                    generator,
+                    out normalizedPrefab))
+            {
+                PendingQueenDungeonRooms[room] = generator;
+                BossRulesDebugLog.Client(
+                    $"Queen dungeon altar room pending context room={room.name} generator={generator.name}.");
+                return;
+            }
+
+            RegisterQueenDungeonRoomLocked(room, normalizedPrefab);
+        }
+    }
+
+    internal static void ProcessPendingQueenDungeonRooms()
+    {
+        lock (Sync)
+        {
+            if (PendingQueenDungeonRooms.Count == 0)
+            {
+                return;
+            }
+
+            float now = Time.realtimeSinceStartup;
+            if (now < _nextQueenDungeonRoomContextRetryAt)
+            {
+                return;
+            }
+
+            _nextQueenDungeonRoomContextRetryAt = now + 0.5f;
+            foreach (KeyValuePair<Room, DungeonGenerator> pair in PendingQueenDungeonRooms.ToList())
+            {
+                Room room = pair.Key;
+                DungeonGenerator generator = pair.Value;
+                if (room == null || generator == null)
+                {
+                    PendingQueenDungeonRooms.Remove(pair.Key);
+                    continue;
+                }
+
+                if (QueenDungeonAltarSupport.TryResolveGeneratorLocationPrefab(
+                        generator,
+                        out string prefabName))
+                {
+                    RegisterQueenDungeonRoomLocked(room, prefabName);
+                }
+            }
+        }
+    }
+
+    private static void RegisterQueenDungeonRoomLocked(Room room, string prefabName)
+    {
+        PendingQueenDungeonRooms.Remove(room);
+        foreach (OfferingBowl registeredBowl in
+                 RegisteredQueenDungeonOfferingBowls.Keys.ToList())
+        {
+            if (registeredBowl == null)
+            {
+                RegisteredQueenDungeonOfferingBowls.Remove(registeredBowl!);
+            }
+        }
+
+        OfferingBowl[] offeringBowls = room
+            .GetComponentsInChildren<OfferingBowl>(true)
+            .Where(QueenDungeonAltarSupport.IsTargetOfferingBowl)
+            .ToArray();
+        if (offeringBowls.Length != 1)
+        {
+            BossRulesPlugin.BossRulesLogger.LogWarning(
+                $"Queen dungeon room '{room.name}' contains {offeringBowls.Length} matching " +
+                $"'{QueenDungeonAltarSupport.OfferingBowlPrefabName}' components; expected exactly one.");
+            return;
+        }
+
+        RegisteredQueenDungeonOfferingBowls[offeringBowls[0]] = prefabName;
+        BossRulesDebugLog.Client(
+            $"Queen dungeon altar registered prefab={prefabName} room={room.name} bowl={offeringBowls[0].name}.");
+        ReconcileRootLocked(offeringBowls[0].transform, prefabName);
+    }
+
     private static void RefreshRegisteredLocationPrefabsLocked(Transform root, string prefabName)
     {
         Location[] locations = root.GetComponentsInChildren<Location>(true);
@@ -217,13 +328,33 @@ internal static partial class AltarRuntime
 
     internal static void ReconcileLooseOfferingBowl(OfferingBowl? offeringBowl)
     {
-        if (offeringBowl == null || offeringBowl.GetComponentInParent<Location>(true) != null)
+        if (offeringBowl == null)
         {
             return;
         }
 
         lock (Sync)
         {
+            if (RegisteredQueenDungeonOfferingBowls.TryGetValue(
+                    offeringBowl,
+                    out string? queenDungeonPrefab))
+            {
+                if (!IsOfferingBowlReconcileCurrent(
+                        offeringBowl,
+                        offeringBowl.transform,
+                        queenDungeonPrefab))
+                {
+                    ReconcileRootLocked(offeringBowl.transform, queenDungeonPrefab);
+                }
+
+                return;
+            }
+
+            if (offeringBowl.GetComponentInParent<Location>(true) != null)
+            {
+                return;
+            }
+
             if (!AltarItemStandHoverInfoFormatter.TryResolveOfferingBowlContext(offeringBowl, out string prefabName, out Transform root))
             {
                 BossRulesDebugLog.Client($"Altar loose offering bowl skipped: context unresolved bowl={offeringBowl.name}.");
@@ -457,6 +588,21 @@ internal static partial class AltarRuntime
         }
     }
 
+    private static void ReapplyRegisteredQueenDungeonOfferingBowlsLocked()
+    {
+        foreach (KeyValuePair<OfferingBowl, string> pair in RegisteredQueenDungeonOfferingBowls.ToList())
+        {
+            OfferingBowl offeringBowl = pair.Key;
+            if (offeringBowl == null)
+            {
+                RegisteredQueenDungeonOfferingBowls.Remove(pair.Key);
+                continue;
+            }
+
+            ReconcileRootLocked(offeringBowl.transform, pair.Value);
+        }
+    }
+
     private static void ReapplyLoadedLooseOfferingBowlsLocked()
     {
         int scanned = 0;
@@ -466,6 +612,11 @@ internal static partial class AltarRuntime
         {
             scanned++;
             if (offeringBowl == null || offeringBowl.GetComponentInParent<Location>(true) != null)
+            {
+                continue;
+            }
+
+            if (RegisteredQueenDungeonOfferingBowls.ContainsKey(offeringBowl))
             {
                 continue;
             }

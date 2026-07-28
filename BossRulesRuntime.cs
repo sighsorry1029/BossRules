@@ -64,13 +64,8 @@ internal static class BossRulesRuntime
                 _configuration.DefaultDespawnRange,
                 _configuration.DefaultDespawnDelaySeconds);
             DespawnRulesManager.MarkBootstrapScanDirty();
-            DespawnRulesManager.ConfigureMessages(
-                _configuration.MessageDespawnStart,
-                _configuration.MessageDespawnReminder,
-                _configuration.MessageDespawnCanceled);
             BossTamedPressureRuntime.Configure(
-                _configuration.BossTamedPressureRules,
-                _configuration.MessageBossTamedPressure);
+                _configuration.BossTamedPressureRules);
             ForsakenPowerRuntime.Configure(forsakenPowers);
         }
     }
@@ -89,7 +84,6 @@ internal static class BossRulesRuntime
             _despawnLookupVersion++;
             DespawnRulesManager.ResetRuntimeState();
             DespawnRulesManager.ConfigureDefaults(64f, 90f);
-            DespawnRulesManager.ConfigureMessages(null, null, null);
             BossTamedPressureRuntime.ResetRuntimeState();
             ForsakenPowerRuntime.Reset();
         }
@@ -97,11 +91,8 @@ internal static class BossRulesRuntime
 
     internal static string GetForsakenPowerRotateLabel()
     {
-        lock (Sync)
-        {
-            string label = _configuration.MessageForsakenPowerRotate ?? "";
-            return label.Length > 0 ? label : "Rotate";
-        }
+        return BossRulesLocalization.Text(
+            BossRulesLocalization.MessageForsakenPowerRotateKey);
     }
 
     internal static int GetDespawnLookupVersion()

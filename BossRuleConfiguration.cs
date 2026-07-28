@@ -18,6 +18,7 @@ internal sealed class BossRuleConfigurationSection
     public BossTamedPressureDefinition? BossTamedPressure { get; set; }
 
     [YamlMember(Order = 3)]
+    // Legacy parse-only field. Message localization now comes from language files.
     public BossRuleLocalizationDefinition? Localization { get; set; }
 }
 
@@ -75,11 +76,6 @@ internal sealed class BossRuleConfigurationState
     internal float DefaultDespawnDelaySeconds { get; set; } = 90f;
     internal List<BossDespawnDefinition> DespawnRules { get; } = new();
     internal List<BossTamedPressureDefinition> BossTamedPressureRules { get; } = new();
-    internal string? MessageDespawnStart { get; set; }
-    internal string? MessageDespawnReminder { get; set; }
-    internal string? MessageDespawnCanceled { get; set; }
-    internal string? MessageBossTamedPressure { get; set; }
-    internal string? MessageForsakenPowerRotate { get; set; }
 }
 
 internal sealed class BossTamedPressureDefinition
@@ -129,6 +125,7 @@ internal static class BossRuleConfiguration
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .Build();
+    private static bool _reportedLegacyLocalization;
 
     internal static bool TryParse(
         string yaml,
@@ -170,30 +167,12 @@ internal static class BossRuleConfiguration
             state.BossTamedPressureRules.Add(section.BossTamedPressure);
         }
 
-        BossRuleLocalizationDefinition? localization = section.Localization;
-        if (localization?.MessageDespawnStart != null)
+        if (section.Localization != null && !_reportedLegacyLocalization)
         {
-            state.MessageDespawnStart = localization.MessageDespawnStart.Trim();
-        }
-
-        if (localization?.MessageDespawnReminder != null)
-        {
-            state.MessageDespawnReminder = localization.MessageDespawnReminder.Trim();
-        }
-
-        if (localization?.MessageDespawnCanceled != null)
-        {
-            state.MessageDespawnCanceled = localization.MessageDespawnCanceled.Trim();
-        }
-
-        if (localization?.MessageBossTamedPressure != null)
-        {
-            state.MessageBossTamedPressure = localization.MessageBossTamedPressure.Trim();
-        }
-
-        if (localization?.MessageForsakenPowerRotate != null)
-        {
-            state.MessageForsakenPowerRotate = localization.MessageForsakenPowerRotate.Trim();
+            _reportedLegacyLocalization = true;
+            BossRulesPlugin.BossRulesLogger.LogWarning(
+                "BossRules.yml 'localization' is deprecated and ignored. " +
+                "Use BossRules.<Language>.yml or .json localization files instead.");
         }
 
         return state;
@@ -380,13 +359,6 @@ internal static class BossRuleConfigurationFiles
         builder.AppendLine("    damagePercentPerSecond: 0.01 # Clamp: 0~1. 0.01 = 1% of max health per second");
         builder.AppendLine("    incomingDamageMultiplier: 1.25 # Clamp: 0~10. Multiplies damage received while affected");
         builder.AppendLine("    outgoingDamageMultiplier: 0.75 # Clamp: 0~10. Multiplies damage dealt while affected");
-        builder.AppendLine();
-        builder.AppendLine("localization:");
-        builder.AppendLine("  messageDespawnStart: \"{name} will despawn in {seconds}s unless someone returns.\"");
-        builder.AppendLine("  messageDespawnReminder: \"{name} will despawn in {seconds}s.\"");
-        builder.AppendLine("  messageDespawnCanceled: \"{name} despawn canceled.\"");
-        builder.AppendLine("  messageBossTamedPressure: \"Tamed creatures near a boss are weakened.\"");
-        builder.AppendLine("  messageForsakenPowerRotate: \"Rotate\"");
         return builder.ToString();
     }
 }

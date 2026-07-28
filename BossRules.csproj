@@ -101,11 +101,14 @@
         <Compile Include="Plugin.cs"/>
         <Compile Include="AltarConfiguration.cs"/>
         <Compile Include="AltarReferenceGenerator.cs"/>
+        <Compile Include="AltarPrefabOwnerResolver.cs"/>
         <Compile Include="BossRuleConfiguration.cs"/>
         <Compile Include="BossRulesConsoleCommands.cs"/>
+        <Compile Include="BossRulesLocalization.cs"/>
         <Compile Include="AltarRuntime.cs"/>
         <Compile Include="AltarRuntime.Refunds.cs"/>
         <Compile Include="BossRulesRuntimePatches.cs"/>
+        <Compile Include="QueenDungeonAltarSupport.cs"/>
         <Compile Include="AltarLocationResolver.cs"/>
         <Compile Include="AltarHoverInfoFormatters.cs"/>
         <Compile Include="BossRulesDebugLog.cs"/>
@@ -126,16 +129,22 @@
         <Compile Include="ForsakenPowerRuntime.Snapshots.cs"/>
         <Compile Include="ForsakenPowerRuntimePatches.cs"/>
         <Compile Include="ForsakenPowerSelectionRuntime.cs"/>
+        <Compile Include="LocalizationManager.cs"/>
         <Compile Include="RangeDefinitions.cs"/>
         <Compile Include="RuntimeState.cs"/>
         <Compile Include="SceneProximityQueries.cs"/>
         <Compile Include="Properties\AssemblyInfo.cs"/>
     </ItemGroup>
     <ItemGroup>
+        <EmbeddedResource Include="translations\English.yml"/>
+        <EmbeddedResource Include="translations\Korean.yml"/>
+    </ItemGroup>
+    <ItemGroup>
         <Content Include="Libs\ServerSync.dll">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </Content>
         <Content Include="README.md"/>
+        <Content Include="THIRD-PARTY-NOTICES.md"/>
         <Content Include="Thunderstore\manifest.json"/>
         <Content Include="Thunderstore\CHANGELOG.md"/>
         <Content Include="Thunderstore\icon.png"/>
@@ -180,16 +189,19 @@
         <Error Text="CHANGELOG.md not found in Thunderstore directory." Condition="!Exists('$(ProjectDir)Thunderstore\CHANGELOG.md')"/>
         <Error Text="manifest.json not found in Thunderstore directory." Condition="!Exists('$(ProjectDir)Thunderstore\manifest.json')"/>
         <Error Text="icon.png not found in Thunderstore directory." Condition="!Exists('$(ProjectDir)Thunderstore\icon.png')"/>
+        <Error Text="English localization template not found in translations directory." Condition="!Exists('$(ProjectDir)translations\English.yml')"/>
         <RemoveDir Directories="$(PackageDir)" Condition="Exists('$(PackageDir)')"/>
         <MakeDir Directories="$(PackageDir)"/>
         <ItemGroup>
             <PackageFiles Include="$(TargetDir)$(AssemblyName).dll"/>
             <PackageFiles Include="$(ProjectDir)README.md"/>
+            <PackageFiles Include="$(ProjectDir)THIRD-PARTY-NOTICES.md"/>
             <PackageFiles Include="$(ProjectDir)Thunderstore\CHANGELOG.md"/>
             <PackageFiles Include="$(ProjectDir)Thunderstore\manifest.json"/>
             <PackageFiles Include="$(ProjectDir)Thunderstore\icon.png"/>
         </ItemGroup>
         <Copy SourceFiles="@(PackageFiles)" DestinationFolder="$(PackageDir)"/>
+        <Copy SourceFiles="$(ProjectDir)translations\English.yml" DestinationFiles="$(PackageDir)\BossRules.English.yml"/>
         <ZipDirectory SourceDirectory="$(PackageDir)" DestinationFile="$(ProjectDir)Thunderstore\$(PackageName).zip" Overwrite="true"/>
         <RemoveDir Directories="$(PackageDir)"/>
     </Target>

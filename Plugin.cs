@@ -15,7 +15,7 @@ namespace BossRules;
 public sealed class BossRulesPlugin : BaseUnityPlugin
 {
     internal const string ModName = "BossRules";
-    internal const string ModVersion = "1.0.2";
+    internal const string ModVersion = "1.0.3";
     internal const string Author = "sighsorry";
     internal const string ModGUID = $"{Author}.{ModName}";
     internal const string AltarYamlFileName = $"{ModName}.altar.yml";
@@ -83,7 +83,9 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         LoadLocalRulesYamlAndPublish("startup");
         LoadLocalForsakenPowersYamlAndPublish("startup");
         _harmony.PatchAll(typeof(BossRulesPlugin).Assembly);
+        Localizer.Initialize(this);
         BossStonePerPlayerRuntime.Initialize();
+        DespawnRulesManager.EnsureMessageRpcRegistered();
         BossRulesConsoleCommands.Register();
         InitializeWatcher();
         Config.Save();
@@ -92,13 +94,16 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
     private void Update()
     {
         ProcessQueuedYamlReload();
+        Localizer.ProcessDeferredLoad();
         DataForgeStatusEffectBridge.ProcessDeferredSubscription();
         AltarRuntime.ProcessPendingAltarSummonMarkers();
+        AltarRuntime.ProcessPendingQueenDungeonRooms();
         AltarRuntime.ProcessDeferredReapply();
         AltarReferenceGenerator.TryAutoRefreshReferenceConfigurationFile();
         ForsakenPowerRuntime.ProcessDeferredApply();
         BossStonePerPlayerRuntime.EnsureRpcRegistered();
         BossStonePerPlayerRuntime.ProcessPendingResetRequests();
+        DespawnRulesManager.EnsureMessageRpcRegistered();
         DespawnRulesManager.ExecuteServerTick();
         BossTamedPressureRuntime.ExecuteServerTick();
     }
@@ -123,11 +128,13 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         Interlocked.Exchange(ref _yamlReloadRequested, 0);
         AltarRuntime.Shutdown();
         BossStonePerPlayerRuntime.Shutdown();
+        DespawnRulesManager.ShutdownMessages();
         ForsakenPowerSelectionRuntime.Shutdown();
-        AltarReferenceGenerator.ResetAutoRefresh();
+        AltarReferenceGenerator.ShutdownAutoRefresh();
         BossRulesManager.ClearRuntimeState();
         BossRulesRuntime.Reset();
         DataForgeStatusEffectBridge.Shutdown();
+        Localizer.Shutdown();
         _harmony.UnpatchSelf();
         Config.Save();
     }

@@ -6,6 +6,15 @@ using UnityEngine;
 
 namespace BossRules;
 
+[HarmonyPatch(typeof(ZoneSystem), "Awake")]
+internal static class ZoneSystemAwakeAltarReferencePatch
+{
+    private static void Postfix()
+    {
+        AltarReferenceGenerator.ResetForZoneSystem();
+    }
+}
+
 [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.SpawnLocation), new Type[]
 {
     typeof(ZoneSystem.ZoneLocation),
@@ -21,6 +30,8 @@ internal static class ZoneSystemSpawnLocationAltarPatch
     private sealed class SpawnLocationState
     {
         public string PrefabName { get; set; } = "";
+        public string PreviousLocationSpawnContext { get; set; } = "";
+        public bool HasLocationSpawnContext { get; set; }
     }
 
     private static void Prefix(ZoneSystem.ZoneLocation location, ref SpawnLocationState? __state)
@@ -31,10 +42,14 @@ internal static class ZoneSystemSpawnLocationAltarPatch
             return;
         }
 
-        __state = new SpawnLocationState
+        SpawnLocationState state = new()
         {
             PrefabName = prefabName
         };
+        state.PreviousLocationSpawnContext =
+            QueenDungeonAltarSupport.BeginLocationSpawnContext(prefabName);
+        state.HasLocationSpawnContext = true;
+        __state = state;
     }
 
     private static void Postfix(GameObject __result, SpawnLocationState? __state)
@@ -45,6 +60,93 @@ internal static class ZoneSystemSpawnLocationAltarPatch
         }
 
         AltarRuntime.ReconcileSpawnedLocationRoot(__result, __state.PrefabName);
+    }
+
+    private static Exception? Finalizer(Exception? __exception, SpawnLocationState? __state)
+    {
+        if (__state?.HasLocationSpawnContext == true)
+        {
+            QueenDungeonAltarSupport.RestoreLocationSpawnContext(
+                __state.PreviousLocationSpawnContext);
+        }
+
+        return __exception;
+    }
+}
+
+[HarmonyPatch(typeof(ZNetView), nameof(ZNetView.Awake))]
+internal static class QueenDungeonGeneratorZNetViewAwakeAltarPatch
+{
+    private static void Postfix(ZNetView __instance)
+    {
+        if (__instance == null ||
+            !(__instance.gameObject?.name ?? "").StartsWith(
+                QueenDungeonAltarSupport.GeneratorPrefabName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        DungeonGenerator? generator = __instance.GetComponent<DungeonGenerator>();
+        if (generator != null)
+        {
+            QueenDungeonAltarSupport.TryResolveGeneratorLocationPrefab(
+                generator,
+                out _);
+        }
+    }
+}
+
+[HarmonyPatch(typeof(DungeonGenerator), "PlaceRoom", new Type[]
+{
+    typeof(DungeonDB.RoomData),
+    typeof(Vector3),
+    typeof(Quaternion),
+    typeof(RoomConnection),
+    typeof(ZoneSystem.SpawnMode)
+})]
+[HarmonyAfter("expand_world_data")]
+internal static class DungeonGeneratorPlaceQueenRoomAltarPatch
+{
+    private sealed class RoomPlacementState
+    {
+        public DungeonGenerator Generator { get; set; } = null!;
+        public string LocationPrefab { get; set; } = "";
+    }
+
+    private static void Prefix(
+        DungeonGenerator __instance,
+        DungeonDB.RoomData roomData,
+        ref RoomPlacementState? __state)
+    {
+        if (!QueenDungeonAltarSupport.IsTargetRoom(roomData))
+        {
+            return;
+        }
+
+        RoomPlacementState state = new()
+        {
+            Generator = __instance
+        };
+        QueenDungeonAltarSupport.TryResolveRoomLocationPrefab(
+            __instance,
+            roomData,
+            out string locationPrefab);
+        state.LocationPrefab = locationPrefab;
+        __state = state;
+    }
+
+    private static void Postfix(Room __result, RoomPlacementState? __state)
+    {
+        if (__result != null && __state != null)
+        {
+            // The Queen bowl remains in this room shell and uses the parent
+            // DungeonGenerator's ZNetView, so reconcile it before OfferingBowl.Start.
+            AltarRuntime.RegisterQueenDungeonRoom(
+                __result,
+                __state.Generator,
+                __state.LocationPrefab);
+        }
     }
 }
 

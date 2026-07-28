@@ -61,7 +61,7 @@ internal static partial class DespawnRulesManager
 
     private sealed class TrackedDespawnState
     {
-        internal string DisplayName { get; set; } = "Target";
+        internal string NameLocalizationKey { get; set; } = "";
         internal string PrefabName { get; set; } = "";
         internal float? RangeOverride { get; set; }
         internal float? DelayOverride { get; set; }
@@ -78,7 +78,7 @@ internal static partial class DespawnRulesManager
             float? delayOverride,
             IReadOnlyCollection<DespawnRefundDrop> refunds)
         {
-            DisplayName = GetDisplayName(character);
+            NameLocalizationKey = character.m_name?.Trim() ?? "";
             PrefabName = Utils.GetPrefabName(character.gameObject);
             RangeOverride = rangeOverride;
             DelayOverride = delayOverride;
@@ -97,8 +97,10 @@ internal static partial class DespawnRulesManager
             float? delayOverride,
             IReadOnlyCollection<DespawnRefundDrop> refunds)
         {
-            DisplayName = string.IsNullOrWhiteSpace(prefabName) ? "Target" : prefabName;
             PrefabName = prefabName ?? "";
+            GameObject? prefab = ZNetScene.instance?.GetPrefab(PrefabName);
+            NameLocalizationKey =
+                prefab?.GetComponent<Character>()?.m_name?.Trim() ?? "";
             RangeOverride = rangeOverride;
             DelayOverride = delayOverride;
             Refunds.Clear();
@@ -396,7 +398,12 @@ internal static partial class DespawnRulesManager
                     cancelRecipientId = nearestPlayerId;
                 }
 
-                SendDespawnMessage(cancelRecipientId, BuildDespawnCanceledMessage(state.DisplayName));
+                SendDespawnMessage(
+                    cancelRecipientId,
+                    DespawnMessageKind.Canceled,
+                    state.NameLocalizationKey,
+                    state.PrefabName,
+                    0);
             }
 
             state.ResetCountdown();
@@ -428,7 +435,12 @@ internal static partial class DespawnRulesManager
             remainingSeconds != state.LastAnnouncedRemainingSeconds &&
             ShouldAnnounceDespawnRemaining(remainingSeconds))
         {
-            SendDespawnMessage(state.CountdownRecipientPlayerId, BuildDespawnReminderMessage(state.DisplayName, remainingSeconds));
+            SendDespawnMessage(
+                state.CountdownRecipientPlayerId,
+                DespawnMessageKind.Reminder,
+                state.NameLocalizationKey,
+                state.PrefabName,
+                remainingSeconds);
             state.LastAnnouncedRemainingSeconds = remainingSeconds;
         }
 
@@ -545,7 +557,12 @@ internal static partial class DespawnRulesManager
 
         if (despawnDelaySeconds > 0f && state.CountdownRecipientPlayerId != 0L)
         {
-            SendDespawnMessage(state.CountdownRecipientPlayerId, BuildDespawnStartMessage(state.DisplayName, state.LastAnnouncedRemainingSeconds));
+            SendDespawnMessage(
+                state.CountdownRecipientPlayerId,
+                DespawnMessageKind.Start,
+                state.NameLocalizationKey,
+                state.PrefabName,
+                state.LastAnnouncedRemainingSeconds);
         }
     }
 

@@ -1,0 +1,5 @@
+bossrules_message_despawn_start: "{name} will despawn in {seconds}s unless someone returns."
+bossrules_message_despawn_reminder: "{name} will despawn in {seconds}s."
+bossrules_message_despawn_canceled: "{name} despawn canceled."
+bossrules_message_boss_tamed_pressure: "Tamed creatures near a boss are weakened."
+bossrules_message_forsaken_power_rotate: "Rotate"

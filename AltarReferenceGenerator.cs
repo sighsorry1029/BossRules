@@ -17,6 +17,16 @@ internal sealed class AltarReferenceEntry
     [YamlMember(Order = 1)]
     public string Prefab { get; set; } = "";
 
+    [YamlIgnore]
+    public string PrefabAssetId { get; set; } = "";
+
+    [YamlIgnore]
+    public string SourcePrefabName { get; set; } = "";
+
+    [YamlIgnore]
+    public string OwnerName { get; set; } =
+        AltarPrefabOwnerResolver.UnknownOwnerName;
+
     [YamlMember(Order = 2)]
     public AltarOfferingBowlDefinition? OfferingBowl { get; set; }
 
@@ -52,6 +62,20 @@ internal sealed class AltarReferenceItemStandDefinition
 
     [YamlMember(Order = 9)]
     public string? GuardianPower { get; set; }
+}
+
+internal sealed class AltarReferenceOwnerSection
+{
+    internal AltarReferenceOwnerSection(
+        string ownerName,
+        IEnumerable<AltarReferenceEntry> entries)
+    {
+        OwnerName = ownerName;
+        Entries = entries.ToList();
+    }
+
+    internal string OwnerName { get; }
+    internal List<AltarReferenceEntry> Entries { get; }
 }
 
 internal sealed class FlowStringListDefinition : IYamlConvertible
@@ -104,11 +128,41 @@ internal static class AltarReferenceGenerator
     private const float AutoRefreshRetryDelaySeconds = 5f;
     private static readonly HashSet<string> DuplicateComponentWarnings = new(StringComparer.OrdinalIgnoreCase);
     private static bool _autoRefreshDone;
+    private static AltarOfferingBowlDefinition? _queenDungeonReferenceDefinition;
+    private static bool _queenDungeonReferenceCaptureAttempted;
+    private static bool _queenDungeonReferenceCaptureFailed;
+    private static bool _queenDungeonReferenceWarningLogged;
+    private static bool _hasSeenZoneSystem;
     private static float _nextAutoRefreshAttemptAt;
 
     internal static void ResetAutoRefresh()
     {
+        ResetAutoRefreshState();
+        AltarPrefabOwnerResolver.ResetRuntimeSnapshot(allowCacheLoad: false);
+    }
+
+    internal static void ResetForZoneSystem()
+    {
+        ResetAutoRefreshState();
+        AltarPrefabOwnerResolver.ResetRuntimeSnapshot(
+            allowCacheLoad: !_hasSeenZoneSystem);
+        _hasSeenZoneSystem = true;
+    }
+
+    internal static void ShutdownAutoRefresh()
+    {
+        ResetAutoRefreshState();
+        AltarPrefabOwnerResolver.ResetRuntimeSnapshot(allowCacheLoad: false);
+        _hasSeenZoneSystem = false;
+    }
+
+    private static void ResetAutoRefreshState()
+    {
         _autoRefreshDone = false;
+        _queenDungeonReferenceDefinition = null;
+        _queenDungeonReferenceCaptureAttempted = false;
+        _queenDungeonReferenceCaptureFailed = false;
+        _queenDungeonReferenceWarningLogged = false;
         _nextAutoRefreshAttemptAt = 0f;
     }
 
@@ -137,9 +191,21 @@ internal static class AltarReferenceGenerator
             return;
         }
 
+        if (!IsQueenDungeonReferenceDataReady())
+        {
+            _nextAutoRefreshAttemptAt = now + AutoRefreshIdleRetryDelaySeconds;
+            return;
+        }
+
         try
         {
             string content = BuildReferenceConfigurationContent(out int entryCount);
+            if (_queenDungeonReferenceCaptureFailed)
+            {
+                _nextAutoRefreshAttemptAt = now + AutoRefreshRetryDelaySeconds;
+                return;
+            }
+
             if (entryCount == 0)
             {
                 _nextAutoRefreshAttemptAt = now + AutoRefreshIdleRetryDelaySeconds;
@@ -175,13 +241,16 @@ internal static class AltarReferenceGenerator
 
     private static string BuildReferenceConfigurationContent(out int entryCount)
     {
+        _queenDungeonReferenceDefinition = null;
+        _queenDungeonReferenceCaptureAttempted = false;
+        _queenDungeonReferenceCaptureFailed = false;
         List<AltarReferenceEntry> entries = CaptureReferenceEntries()
             .ToList();
         entryCount = entries.Count;
 
         StringBuilder builder = new();
         builder.AppendLine("# BossRules altar reference");
-        builder.AppendLine("# Generated from loaded ZoneSystem location prefabs.");
+        builder.AppendLine("# Generated from loaded ZoneSystem location prefabs and supported nested dungeon rooms.");
         builder.AppendLine("# Copy rows to BossRules.altar.yml to override.");
         builder.AppendLine("# This file is overwritten automatically.");
         builder.Append(SerializeReferenceEntries(entries));
@@ -196,9 +265,37 @@ internal static class AltarReferenceGenerator
         }
 
         StringBuilder builder = new();
-        foreach (AltarReferenceEntry entry in entries.OrderBy(entry => entry.Prefab, StringComparer.OrdinalIgnoreCase))
+        bool wroteSection = false;
+        foreach (AltarReferenceOwnerSection section in entries
+                     .Select(entry => new
+                     {
+                         Entry = entry,
+                         OwnerName = AltarPrefabOwnerResolver.NormalizeOwnerName(
+                             entry.OwnerName)
+                     })
+                     .OrderBy(entry =>
+                         AltarPrefabOwnerResolver.GetOwnerSortBucket(entry.OwnerName))
+                     .ThenBy(entry => entry.OwnerName, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(entry => entry.Entry.Prefab, StringComparer.OrdinalIgnoreCase)
+                     .GroupBy(entry => entry.OwnerName, StringComparer.OrdinalIgnoreCase)
+                     .Select(group => new AltarReferenceOwnerSection(
+                         group.Key,
+                         group.Select(entry => entry.Entry))))
         {
-            builder.AppendLine(SerializeReferenceEntry(entry));
+            if (wroteSection)
+            {
+                builder.AppendLine();
+            }
+
+            builder.Append("# ===== ")
+                .Append(section.OwnerName)
+                .AppendLine(" =====");
+            foreach (AltarReferenceEntry entry in section.Entries)
+            {
+                builder.AppendLine(SerializeReferenceEntry(entry));
+            }
+
+            wroteSection = true;
         }
 
         return builder.ToString();
@@ -233,23 +330,66 @@ internal static class AltarReferenceGenerator
     private static List<AltarReferenceEntry> CaptureReferenceEntries()
     {
         List<AltarReferenceEntry> entries = new();
+        List<ZoneSystem.ZoneLocation> loadedLocationPrefabs = new();
         HashSet<string> capturedPrefabs = new(StringComparer.OrdinalIgnoreCase);
         DuplicateComponentWarnings.Clear();
 
-        foreach (ZoneSystem.ZoneLocation location in ZoneSystem.instance.m_locations)
+        try
         {
-            if (TryCaptureReferenceEntry(location, capturedPrefabs, out AltarReferenceEntry? entry) && entry != null)
+            foreach (ZoneSystem.ZoneLocation location in ZoneSystem.instance.m_locations)
             {
-                entries.Add(entry);
+                if (TryCaptureReferenceEntry(
+                        location,
+                        capturedPrefabs,
+                        loadedLocationPrefabs,
+                        out AltarReferenceEntry? entry) &&
+                    entry != null)
+                {
+                    entries.Add(entry);
+                }
+            }
+
+            AltarPrefabOwnerSnapshot ownerSnapshot =
+                AltarPrefabOwnerResolver.GetSnapshot(entries.Select(entry =>
+                    new AltarPrefabOwnerSource(
+                        entry.Prefab,
+                        entry.PrefabAssetId,
+                        entry.SourcePrefabName)));
+            foreach (AltarReferenceEntry entry in entries)
+            {
+                entry.OwnerName = ownerSnapshot.GetOwnerName(entry.Prefab);
+            }
+
+            return entries;
+        }
+        finally
+        {
+            Exception? firstReleaseFailure = null;
+            for (int index = loadedLocationPrefabs.Count - 1; index >= 0; index--)
+            {
+                try
+                {
+                    loadedLocationPrefabs[index].m_prefab.Release();
+                }
+                catch (Exception ex)
+                {
+                    firstReleaseFailure ??= ex;
+                }
+            }
+
+            if (firstReleaseFailure != null)
+            {
+                BossRulesPlugin.BossRulesLogger.LogWarning(
+                    $"Failed to release one or more altar reference location prefabs. " +
+                    $"{FormatException(firstReleaseFailure)}");
             }
         }
-
-        return entries;
     }
 
     private static bool TryCaptureReferenceEntry(
         ZoneSystem.ZoneLocation location,
         HashSet<string> capturedPrefabs,
+        ICollection<ZoneSystem.ZoneLocation> loadedLocationPrefabs,
         out AltarReferenceEntry? entry)
     {
         entry = null;
@@ -265,6 +405,19 @@ internal static class AltarReferenceGenerator
         }
 
         location.m_prefab.Load();
+        loadedLocationPrefabs.Add(location);
+        return TryCaptureLoadedReferenceEntry(
+            location,
+            prefabName,
+            out entry);
+    }
+
+    private static bool TryCaptureLoadedReferenceEntry(
+        ZoneSystem.ZoneLocation location,
+        string prefabName,
+        out AltarReferenceEntry? entry)
+    {
+        entry = null;
         GameObject? rootPrefab = location.m_prefab.Asset;
         if (rootPrefab == null)
         {
@@ -273,16 +426,30 @@ internal static class AltarReferenceGenerator
 
         OfferingBowl[] offeringBowls = rootPrefab.GetComponentsInChildren<OfferingBowl>(true);
         ItemStand[] itemStands = rootPrefab.GetComponentsInChildren<ItemStand>(true);
-        if (offeringBowls.Length == 0 && itemStands.Length == 0)
+        WarnDuplicateComponent(prefabName, "OfferingBowl", offeringBowls.Length);
+
+        AltarOfferingBowlDefinition? offeringBowlDefinition = offeringBowls.Length > 0
+            ? ConvertReferenceOfferingBowl(AltarRuntime.CaptureOfferingBowlSnapshot(offeringBowls[0]))
+            : null;
+        if (offeringBowlDefinition == null &&
+            QueenDungeonAltarSupport.IsSupportedLocationPrefab(prefabName))
+        {
+            offeringBowlDefinition = TryCaptureQueenDungeonOfferingBowl();
+        }
+
+        if (offeringBowlDefinition == null && itemStands.Length == 0)
         {
             return false;
         }
 
-        WarnDuplicateComponent(prefabName, "OfferingBowl", offeringBowls.Length);
         entry = new AltarReferenceEntry
         {
             Prefab = prefabName,
-            OfferingBowl = offeringBowls.Length > 0 ? ConvertReferenceOfferingBowl(AltarRuntime.CaptureOfferingBowlSnapshot(offeringBowls[0])) : null,
+            PrefabAssetId = location.m_prefab.m_assetID.IsValid
+                ? location.m_prefab.m_assetID.ToString()
+                : "",
+            SourcePrefabName = rootPrefab.name ?? "",
+            OfferingBowl = offeringBowlDefinition,
             ItemStands = itemStands.Length > 0
                 ? itemStands
                     .Where(itemStand => itemStand != null)
@@ -293,6 +460,110 @@ internal static class AltarReferenceGenerator
         };
 
         return entry.OfferingBowl != null || entry.ItemStands is { Count: > 0 };
+    }
+
+    private static bool IsQueenDungeonReferenceDataReady()
+    {
+        bool targetLocationLoaded = ZoneSystem.instance.m_locations.Any(location =>
+            QueenDungeonAltarSupport.IsSupportedLocationPrefab(
+                AltarLocationResolver.GetZoneLocationPrefabName(location)));
+        if (!targetLocationLoaded)
+        {
+            return true;
+        }
+
+        if (DungeonDB.instance == null || DungeonDB.GetRooms().Count == 0)
+        {
+            return false;
+        }
+
+        bool targetRoomRegistered = DungeonDB.GetRooms()
+            .Any(QueenDungeonAltarSupport.IsTargetRoom);
+        if (!targetRoomRegistered)
+        {
+            WarnQueenDungeonReference(
+                $"Dungeon room '{QueenDungeonAltarSupport.RoomPrefabName}' was not registered. " +
+                $"Waiting to capture the '{QueenDungeonAltarSupport.LocationPrefabName}' altar reference.");
+        }
+
+        return targetRoomRegistered;
+    }
+
+    private static AltarOfferingBowlDefinition? TryCaptureQueenDungeonOfferingBowl()
+    {
+        if (_queenDungeonReferenceCaptureAttempted)
+        {
+            return _queenDungeonReferenceDefinition;
+        }
+
+        _queenDungeonReferenceCaptureAttempted = true;
+        DungeonDB.RoomData? roomData = DungeonDB.GetRooms()
+            .FirstOrDefault(QueenDungeonAltarSupport.IsTargetRoom);
+        if (roomData == null)
+        {
+            MarkQueenDungeonReferenceCaptureFailed(
+                $"Dungeon room '{QueenDungeonAltarSupport.RoomPrefabName}' was not registered. " +
+                $"The '{QueenDungeonAltarSupport.LocationPrefabName}' altar reference could not be captured.");
+            return null;
+        }
+
+        try
+        {
+            roomData.m_prefab.Load();
+            GameObject? roomPrefab = roomData.m_prefab.Asset;
+            if (roomPrefab == null)
+            {
+                MarkQueenDungeonReferenceCaptureFailed(
+                    $"Dungeon room '{QueenDungeonAltarSupport.RoomPrefabName}' could not be loaded. " +
+                    $"The '{QueenDungeonAltarSupport.LocationPrefabName}' altar reference could not be captured.");
+                return null;
+            }
+
+            OfferingBowl[] offeringBowls = roomPrefab
+                .GetComponentsInChildren<OfferingBowl>(true)
+                .Where(QueenDungeonAltarSupport.IsTargetOfferingBowl)
+                .ToArray();
+            if (offeringBowls.Length != 1)
+            {
+                MarkQueenDungeonReferenceCaptureFailed(
+                    $"Dungeon room '{QueenDungeonAltarSupport.RoomPrefabName}' contains " +
+                    $"{offeringBowls.Length} matching '{QueenDungeonAltarSupport.OfferingBowlPrefabName}' components; expected exactly one. " +
+                    $"The '{QueenDungeonAltarSupport.LocationPrefabName}' altar reference could not be captured.");
+                return null;
+            }
+
+            _queenDungeonReferenceDefinition = ConvertReferenceOfferingBowl(
+                AltarRuntime.CaptureOfferingBowlSnapshot(offeringBowls[0]));
+            return _queenDungeonReferenceDefinition;
+        }
+        catch (Exception ex)
+        {
+            MarkQueenDungeonReferenceCaptureFailed(
+                $"Dungeon room '{QueenDungeonAltarSupport.RoomPrefabName}' failed to load. " +
+                $"{FormatException(ex)} The '{QueenDungeonAltarSupport.LocationPrefabName}' altar reference will be retried.");
+            return null;
+        }
+        finally
+        {
+            roomData.m_prefab.Release();
+        }
+    }
+
+    private static void MarkQueenDungeonReferenceCaptureFailed(string message)
+    {
+        _queenDungeonReferenceCaptureFailed = true;
+        WarnQueenDungeonReference(message);
+    }
+
+    private static void WarnQueenDungeonReference(string message)
+    {
+        if (_queenDungeonReferenceWarningLogged)
+        {
+            return;
+        }
+
+        _queenDungeonReferenceWarningLogged = true;
+        BossRulesPlugin.BossRulesLogger.LogWarning(message);
     }
 
     private static AltarOfferingBowlDefinition ConvertReferenceOfferingBowl(OfferingBowlSnapshot snapshot)

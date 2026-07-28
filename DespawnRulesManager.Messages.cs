@@ -1,62 +1,99 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using UnityEngine;
 
 namespace BossRules;
 
 internal static partial class DespawnRulesManager
 {
-    private const string DefaultMessageDespawnStart = "{name} will despawn in {seconds}s unless someone returns.";
-    private const string DefaultMessageDespawnReminder = "{name} will despawn in {seconds}s.";
-    private const string DefaultMessageDespawnCanceled = "{name} despawn canceled.";
-    private static string _messageDespawnStart = DefaultMessageDespawnStart;
-    private static string _messageDespawnReminder = DefaultMessageDespawnReminder;
-    private static string _messageDespawnCanceled = DefaultMessageDespawnCanceled;
+    private const string DespawnMessageRpc =
+        "sighsorry.BossRules Despawn Message";
+    private const int MaximumDespawnMessageNameLength = 256;
+    private static ZRoutedRpc? _registeredDespawnMessageRpcInstance;
 
-    internal static void ConfigureMessages(string? despawnStart, string? despawnReminder, string? despawnCanceled)
+    private enum DespawnMessageKind
     {
-        _messageDespawnStart = despawnStart ?? DefaultMessageDespawnStart;
-        _messageDespawnReminder = despawnReminder ?? DefaultMessageDespawnReminder;
-        _messageDespawnCanceled = despawnCanceled ?? DefaultMessageDespawnCanceled;
+        Start = 1,
+        Reminder = 2,
+        Canceled = 3
     }
 
-    private static void SendDespawnMessage(long playerId, string message)
+    internal static void EnsureMessageRpcRegistered()
     {
-        if (playerId == 0L || string.IsNullOrWhiteSpace(message))
+        ZRoutedRpc? rpc = ZRoutedRpc.instance;
+        if (rpc == null ||
+            ReferenceEquals(rpc, _registeredDespawnMessageRpcInstance))
         {
             return;
         }
 
+        rpc.Register<int, string, string, int>(
+            DespawnMessageRpc,
+            OnDespawnMessageRpc);
+        _registeredDespawnMessageRpcInstance = rpc;
+    }
+
+    internal static void ShutdownMessages()
+    {
+        _registeredDespawnMessageRpcInstance = null;
+    }
+
+    private static void SendDespawnMessage(
+        long playerId,
+        DespawnMessageKind messageKind,
+        string? nameLocalizationKey,
+        string? prefabName,
+        int remainingSeconds)
+    {
+        if (playerId == 0L)
+        {
+            return;
+        }
+
+        string safeNameLocalizationKey =
+            LimitMessageValue(nameLocalizationKey);
+        string safePrefabName = LimitMessageValue(prefabName);
+        int safeRemainingSeconds = Math.Max(0, remainingSeconds);
+
         if (BossRulesPlugin.IsRuntimeServer())
         {
-            if (TrySendServerDespawnMessage(playerId, message))
+            if (TrySendServerDespawnMessage(
+                    playerId,
+                    messageKind,
+                    safeNameLocalizationKey,
+                    safePrefabName,
+                    safeRemainingSeconds))
             {
                 return;
             }
 
             Player? fallbackPlayer = Player.GetPlayer(playerId);
-            if (fallbackPlayer == null)
+            if (fallbackPlayer == null ||
+                fallbackPlayer != Player.m_localPlayer)
             {
                 return;
             }
 
-            fallbackPlayer.Message(MessageHud.MessageType.TopLeft, message);
+            ShowLocalizedDespawnMessage(
+                messageKind,
+                safeNameLocalizationKey,
+                safePrefabName,
+                safeRemainingSeconds);
             return;
         }
 
         Player? player = Player.GetPlayer(playerId);
-        if (player == null)
+        if (player == null ||
+            player != Player.m_localPlayer)
         {
             return;
         }
 
-        if (player.gameObject == null || player.IsDead())
-        {
-            return;
-        }
-
-        player.Message(MessageHud.MessageType.TopLeft, message);
+        ShowLocalizedDespawnMessage(
+            messageKind,
+            safeNameLocalizationKey,
+            safePrefabName,
+            safeRemainingSeconds);
     }
 
     private static bool IsDespawnMessageRecipientAvailable(long recipientId)
@@ -84,36 +121,53 @@ internal static partial class DespawnRulesManager
                !localPlayer.IsDead();
     }
 
-    private static bool TrySendServerDespawnMessage(long recipientId, string message)
+    private static bool TrySendServerDespawnMessage(
+        long recipientId,
+        DespawnMessageKind messageKind,
+        string nameLocalizationKey,
+        string prefabName,
+        int remainingSeconds)
     {
+        EnsureMessageRpcRegistered();
         if (ZRoutedRpc.instance == null)
         {
             return false;
         }
 
+        long targetPeerId;
         if (IsValidMessageTargetPeerId(recipientId))
         {
-            ZRoutedRpc.instance.InvokeRoutedRPC(
-                recipientId,
-                "ShowMessage",
-                (int)MessageHud.MessageType.TopLeft,
-                message);
-            return true;
+            targetPeerId = recipientId;
         }
-
-        Player? player = Player.GetPlayer(recipientId);
-        if (player != null &&
-            TryResolveMessageTargetPeerId(player, out long targetPeerId))
+        else
         {
-            ZRoutedRpc.instance.InvokeRoutedRPC(
-                targetPeerId,
-                "ShowMessage",
-                (int)MessageHud.MessageType.TopLeft,
-                message);
+            Player? player = Player.GetPlayer(recipientId);
+            if (player == null ||
+                !TryResolveMessageTargetPeerId(player, out targetPeerId))
+            {
+                return false;
+            }
+        }
+
+        if (targetPeerId == ZNet.GetUID() &&
+            Player.m_localPlayer != null)
+        {
+            ShowLocalizedDespawnMessage(
+                messageKind,
+                nameLocalizationKey,
+                prefabName,
+                remainingSeconds);
             return true;
         }
 
-        return false;
+        ZRoutedRpc.instance.InvokeRoutedRPC(
+            targetPeerId,
+            DespawnMessageRpc,
+            (int)messageKind,
+            nameLocalizationKey,
+            prefabName,
+            remainingSeconds);
+        return true;
     }
 
     private static bool TryResolveMessageTargetPeerId(Player player, out long targetPeerId)
@@ -176,50 +230,88 @@ internal static partial class DespawnRulesManager
         return ZNet.instance?.GetPeer(peerId)?.IsReady() == true;
     }
 
-    private static string BuildDespawnStartMessage(string displayName, int remainingSeconds)
+    private static void OnDespawnMessageRpc(
+        long sender,
+        int rawMessageKind,
+        string nameLocalizationKey,
+        string prefabName,
+        int remainingSeconds)
     {
-        return FormatDespawnMessage(_messageDespawnStart, displayName, remainingSeconds);
-    }
-
-    private static string BuildDespawnReminderMessage(string displayName, int remainingSeconds)
-    {
-        return FormatDespawnMessage(_messageDespawnReminder, displayName, remainingSeconds);
-    }
-
-    private static string BuildDespawnCanceledMessage(string displayName)
-    {
-        return FormatDespawnMessage(_messageDespawnCanceled, displayName, 0);
-    }
-
-    private static string FormatDespawnMessage(string template, string displayName, int remainingSeconds)
-    {
-        return (template ?? "")
-            .Replace("{name}", displayName ?? "")
-            .Replace("{seconds}", remainingSeconds.ToString(CultureInfo.InvariantCulture));
-    }
-
-    private static string GetDisplayName(Character? character)
-    {
-        if (character == null)
+        ZRoutedRpc? rpc = ZRoutedRpc.instance;
+        if (rpc == null ||
+            sender != rpc.GetServerPeerID() ||
+            nameLocalizationKey == null ||
+            prefabName == null ||
+            nameLocalizationKey.Length > MaximumDespawnMessageNameLength ||
+            prefabName.Length > MaximumDespawnMessageNameLength ||
+            remainingSeconds < 0 ||
+            remainingSeconds > 300 ||
+            !TryParseDespawnMessageKind(
+                rawMessageKind,
+                out DespawnMessageKind messageKind))
         {
-            return "Target";
+            return;
         }
 
-        string hoverName = character.GetHoverName();
-        if (!string.IsNullOrWhiteSpace(hoverName))
+        ShowLocalizedDespawnMessage(
+            messageKind,
+            nameLocalizationKey,
+            prefabName,
+            remainingSeconds);
+    }
+
+    private static void ShowLocalizedDespawnMessage(
+        DespawnMessageKind messageKind,
+        string nameLocalizationKey,
+        string prefabName,
+        int remainingSeconds)
+    {
+        Player? localPlayer = Player.m_localPlayer;
+        if (localPlayer == null ||
+            localPlayer.gameObject == null ||
+            localPlayer.IsDead())
         {
-            return hoverName;
+            return;
         }
 
-        if (!string.IsNullOrWhiteSpace(character.m_name))
+        string messageKey = messageKind switch
         {
-            return Localization.instance != null
-                ? Localization.instance.Localize(character.m_name)
-                : character.m_name;
+            DespawnMessageKind.Start =>
+                BossRulesLocalization.MessageDespawnStartKey,
+            DespawnMessageKind.Reminder =>
+                BossRulesLocalization.MessageDespawnReminderKey,
+            DespawnMessageKind.Canceled =>
+                BossRulesLocalization.MessageDespawnCanceledKey,
+            _ => ""
+        };
+        if (messageKey.Length == 0)
+        {
+            return;
         }
 
-        return character.gameObject != null && !string.IsNullOrWhiteSpace(character.gameObject.name)
-            ? character.gameObject.name
-            : "Target";
+        string message = BossRulesLocalization.FormatDespawnMessage(
+            messageKey,
+            nameLocalizationKey,
+            prefabName,
+            remainingSeconds);
+        localPlayer.Message(MessageHud.MessageType.TopLeft, message);
+    }
+
+    private static bool TryParseDespawnMessageKind(
+        int rawMessageKind,
+        out DespawnMessageKind messageKind)
+    {
+        messageKind = (DespawnMessageKind)rawMessageKind;
+        return messageKind == DespawnMessageKind.Start ||
+               messageKind == DespawnMessageKind.Reminder ||
+               messageKind == DespawnMessageKind.Canceled;
+    }
+
+    private static string LimitMessageValue(string? value)
+    {
+        string normalized = (value ?? "").Trim();
+        return normalized.Length <= MaximumDespawnMessageNameLength
+            ? normalized
+            : normalized.Substring(0, MaximumDespawnMessageNameLength);
     }
 }

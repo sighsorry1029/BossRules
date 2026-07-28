@@ -14,7 +14,8 @@ internal static class BossTamedPressureRuntime
     private const float DefaultIncomingDamageMultiplier = 1f;
     private const float DefaultOutgoingDamageMultiplier = 1f;
     private const float MessageInterval = 5f;
-    private const string DefaultMessage = "Tamed creatures near a boss are weakened.";
+    private const string LocalizedMessage =
+        "$" + BossRulesLocalization.MessageBossTamedPressureKey;
 
     private static readonly int ActiveUntilKey = "BossRules_BossTamedPressure_Until".GetStableHashCode();
     private static readonly int IncomingMultiplierKey = "BossRules_BossTamedPressure_Incoming".GetStableHashCode();
@@ -40,7 +41,6 @@ internal static class BossTamedPressureRuntime
         public float PercentMaxHealthPerSecond { get; set; }
         public float IncomingDamageMultiplier { get; set; }
         public float OutgoingDamageMultiplier { get; set; }
-        public string? Message { get; set; }
         public double NextScanAt { get; set; }
         public double NextDamageAt { get; set; }
         public int CachedBossPrefabHashSignature { get; set; } = -1;
@@ -96,14 +96,14 @@ internal static class BossTamedPressureRuntime
         public double ExpiresAt { get; set; }
     }
 
-    internal static void Configure(IEnumerable<BossTamedPressureDefinition> definitions, string? message)
+    internal static void Configure(IEnumerable<BossTamedPressureDefinition> definitions)
     {
         AdvanceGeneration();
         Rules.Clear();
         ClearTransientBuffers();
         foreach (BossTamedPressureDefinition definition in definitions ?? Array.Empty<BossTamedPressureDefinition>())
         {
-            Rules.Add(CompileRule(definition, message));
+            Rules.Add(CompileRule(definition));
         }
     }
 
@@ -194,7 +194,7 @@ internal static class BossTamedPressureRuntime
         hit.ApplyModifier(appliedMultiplier);
     }
 
-    private static Rule CompileRule(BossTamedPressureDefinition definition, string? message)
+    private static Rule CompileRule(BossTamedPressureDefinition definition)
     {
         BossTamedPressureTargetsDefinition? targets = definition.Targets;
         BossTamedPressurePressureDefinition? pressure = definition.Pressure;
@@ -204,8 +204,7 @@ internal static class BossTamedPressureRuntime
             MaxTargetsPerBoss = Mathf.Clamp(targets?.MaxPerBoss ?? DefaultMaxTargetsPerBoss, 1, 128),
             PercentMaxHealthPerSecond = Mathf.Clamp01(pressure?.DamagePercentPerSecond ?? DefaultPercentMaxHealthPerSecond),
             IncomingDamageMultiplier = Mathf.Clamp(pressure?.IncomingDamageMultiplier ?? DefaultIncomingDamageMultiplier, 0f, 10f),
-            OutgoingDamageMultiplier = Mathf.Clamp(pressure?.OutgoingDamageMultiplier ?? DefaultOutgoingDamageMultiplier, 0f, 10f),
-            Message = message ?? DefaultMessage
+            OutgoingDamageMultiplier = Mathf.Clamp(pressure?.OutgoingDamageMultiplier ?? DefaultOutgoingDamageMultiplier, 0f, 10f)
         };
 
         AddHashes(rule.BossPrefabHashes, definition.BossPrefabs);
@@ -651,11 +650,6 @@ internal static class BossTamedPressureRuntime
         Vector3 targetPosition,
         double now)
     {
-        if (string.IsNullOrWhiteSpace(rule.Message))
-        {
-            return;
-        }
-
         if (!SceneProximityQueries.TryFindNearestLivingServerPlayerInRangeXZ(targetPosition, Mathf.Max(rule.Range, 32f), out long playerId) ||
             playerId == 0L)
         {
@@ -670,7 +664,7 @@ internal static class BossTamedPressureRuntime
         rule.NextMessageByPlayer[playerId] = now + MessageInterval;
         if (playerId == ZNet.GetUID() && Player.m_localPlayer != null)
         {
-            Player.m_localPlayer.Message(MessageHud.MessageType.TopLeft, rule.Message);
+            Player.m_localPlayer.Message(MessageHud.MessageType.TopLeft, LocalizedMessage);
             return;
         }
 
@@ -678,7 +672,7 @@ internal static class BossTamedPressureRuntime
             playerId,
             "ShowMessage",
             (int)MessageHud.MessageType.TopLeft,
-            rule.Message);
+            LocalizedMessage);
     }
 
     private static double GetTimeSeconds()
