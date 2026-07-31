@@ -14,6 +14,8 @@ internal static class DataForgeStatusEffectBridge
     private static EventInfo? StatusEffectOverridesAppliedEvent;
     private static Action? StatusEffectOverridesWillApplyHandler;
     private static Action? StatusEffectOverridesAppliedHandler;
+    private static bool StatusEffectOverridesWillApplyHandlerAttached;
+    private static bool StatusEffectOverridesAppliedHandlerAttached;
     private static float NextResolveAt;
     private static bool Subscribed;
     private static bool InvokeWarningLogged;
@@ -27,6 +29,11 @@ internal static class DataForgeStatusEffectBridge
         }
 
         NextResolveAt = Time.realtimeSinceStartup + ResolveRetrySeconds;
+        if (!TryDisconnect())
+        {
+            return;
+        }
+
         TryResolveAndSubscribe();
     }
 
@@ -57,86 +64,124 @@ internal static class DataForgeStatusEffectBridge
                     $"Could not query DataForge status effect ownership. BossRules will ignore DataForge ownership until it can resolve again. {ex.GetType().Name}: {ex.Message}");
             }
 
-            HasActiveStatusEffectOverrideMethod = null;
-            Subscribed = false;
+            TryDisconnect();
+            NextResolveAt = 0f;
             return false;
         }
     }
 
     internal static void Shutdown()
     {
-        if (StatusEffectOverridesWillApplyEvent != null && StatusEffectOverridesWillApplyHandler != null)
-        {
-            try
-            {
-                StatusEffectOverridesWillApplyEvent.RemoveEventHandler(null, StatusEffectOverridesWillApplyHandler);
-            }
-            catch
-            {
-                // Best effort cleanup for an optional integration.
-            }
-        }
-
-        if (StatusEffectOverridesAppliedEvent != null && StatusEffectOverridesAppliedHandler != null)
-        {
-            try
-            {
-                StatusEffectOverridesAppliedEvent.RemoveEventHandler(null, StatusEffectOverridesAppliedHandler);
-            }
-            catch
-            {
-                // Best effort cleanup for an optional integration.
-            }
-        }
-
-        HasActiveStatusEffectOverrideMethod = null;
-        StatusEffectOverridesWillApplyEvent = null;
-        StatusEffectOverridesAppliedEvent = null;
-        StatusEffectOverridesWillApplyHandler = null;
-        StatusEffectOverridesAppliedHandler = null;
-        Subscribed = false;
+        TryDisconnect();
         NextResolveAt = 0f;
         InvokeWarningLogged = false;
         SubscriptionWarningLogged = false;
     }
 
+    private static bool TryDisconnect()
+    {
+        HasActiveStatusEffectOverrideMethod = null;
+        Subscribed = false;
+        bool disconnected = true;
+        if (StatusEffectOverridesWillApplyHandlerAttached)
+        {
+            try
+            {
+                StatusEffectOverridesWillApplyEvent?.RemoveEventHandler(
+                    null,
+                    StatusEffectOverridesWillApplyHandler);
+                StatusEffectOverridesWillApplyHandlerAttached = false;
+            }
+            catch
+            {
+                disconnected = false;
+            }
+        }
+
+        if (StatusEffectOverridesAppliedHandlerAttached)
+        {
+            try
+            {
+                StatusEffectOverridesAppliedEvent?.RemoveEventHandler(
+                    null,
+                    StatusEffectOverridesAppliedHandler);
+                StatusEffectOverridesAppliedHandlerAttached = false;
+            }
+            catch
+            {
+                disconnected = false;
+            }
+        }
+
+        if (!StatusEffectOverridesWillApplyHandlerAttached)
+        {
+            StatusEffectOverridesWillApplyEvent = null;
+            StatusEffectOverridesWillApplyHandler = null;
+        }
+
+        if (!StatusEffectOverridesAppliedHandlerAttached)
+        {
+            StatusEffectOverridesAppliedEvent = null;
+            StatusEffectOverridesAppliedHandler = null;
+        }
+
+        return disconnected;
+    }
+
     private static void TryResolveAndSubscribe()
     {
-        Type? apiType = Type.GetType(ApiTypeName, throwOnError: false);
-        if (apiType == null)
+        try
         {
-            return;
-        }
+            Type? apiType = Type.GetType(ApiTypeName, throwOnError: false);
+            if (apiType == null)
+            {
+                return;
+            }
 
-        HasActiveStatusEffectOverrideMethod = apiType.GetMethod(
-            "HasActiveStatusEffectOverride",
-            BindingFlags.Public | BindingFlags.Static,
-            binder: null,
-            types: new[] { typeof(string) },
-            modifiers: null);
+            HasActiveStatusEffectOverrideMethod = apiType.GetMethod(
+                "HasActiveStatusEffectOverride",
+                BindingFlags.Public | BindingFlags.Static,
+                binder: null,
+                types: new[] { typeof(string) },
+                modifiers: null);
+            if (HasActiveStatusEffectOverrideMethod?.ReturnType != typeof(bool))
+            {
+                HasActiveStatusEffectOverrideMethod = null;
+            }
 
-        StatusEffectOverridesWillApplyEvent = GetActionEvent(apiType, "StatusEffectOverridesWillApply");
-        StatusEffectOverridesAppliedEvent = GetActionEvent(apiType, "StatusEffectOverridesApplied");
+            StatusEffectOverridesWillApplyEvent = GetActionEvent(apiType, "StatusEffectOverridesWillApply");
+            StatusEffectOverridesAppliedEvent = GetActionEvent(apiType, "StatusEffectOverridesApplied");
 
-        if (HasActiveStatusEffectOverrideMethod == null)
-        {
-            LogSubscriptionWarningOnce("DataForge status effect ownership API was found, but the query method is missing.");
-            return;
-        }
+            if (HasActiveStatusEffectOverrideMethod == null)
+            {
+                LogSubscriptionWarningOnce("DataForge status effect ownership API was found, but the query method is missing.");
+                return;
+            }
 
-        if (StatusEffectOverridesWillApplyEvent == null || StatusEffectOverridesAppliedEvent == null)
-        {
-            LogSubscriptionWarningOnce("DataForge status effect ownership API was found, but ownership events are missing or have unsupported signatures.");
+            if (StatusEffectOverridesWillApplyEvent == null || StatusEffectOverridesAppliedEvent == null)
+            {
+                StatusEffectOverridesWillApplyEvent = null;
+                StatusEffectOverridesAppliedEvent = null;
+                LogSubscriptionWarningOnce("DataForge status effect ownership API was found, but ownership events are missing or have unsupported signatures.");
+                Subscribed = true;
+                return;
+            }
+
+            StatusEffectOverridesWillApplyHandler = ForsakenPowerRuntime.ReleaseDataForgeOwnedSnapshots;
+            StatusEffectOverridesAppliedHandler = ForsakenPowerRuntime.RequestReapply;
+            StatusEffectOverridesWillApplyHandlerAttached = true;
+            StatusEffectOverridesWillApplyEvent.AddEventHandler(null, StatusEffectOverridesWillApplyHandler);
+            StatusEffectOverridesAppliedHandlerAttached = true;
+            StatusEffectOverridesAppliedEvent.AddEventHandler(null, StatusEffectOverridesAppliedHandler);
             Subscribed = true;
-            return;
+            BossRulesPlugin.BossRulesLogger.LogDebug("Connected to DataForge status effect ownership API.");
         }
-
-        StatusEffectOverridesWillApplyHandler = ForsakenPowerRuntime.ReleaseDataForgeOwnedSnapshots;
-        StatusEffectOverridesAppliedHandler = ForsakenPowerRuntime.RequestReapply;
-        StatusEffectOverridesWillApplyEvent.AddEventHandler(null, StatusEffectOverridesWillApplyHandler);
-        StatusEffectOverridesAppliedEvent.AddEventHandler(null, StatusEffectOverridesAppliedHandler);
-        Subscribed = true;
-        BossRulesPlugin.BossRulesLogger.LogDebug("Connected to DataForge status effect ownership API.");
+        catch (Exception ex)
+        {
+            TryDisconnect();
+            LogSubscriptionWarningOnce(
+                $"Could not connect to DataForge status effect ownership API. BossRules will retry. {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private static EventInfo? GetActionEvent(Type apiType, string eventName)

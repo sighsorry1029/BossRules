@@ -40,21 +40,3 @@ internal static class ItemStandUpdateVisualBossStonePerPlayerPatch
         return !BossStonePerPlayerRuntime.TryOverrideUpdateVisual(__instance);
     }
 }
-
-[HarmonyPatch(typeof(Player), "Update")]
-internal static class PlayerUpdateForsakenPowerSelectionPatch
-{
-    private static void Postfix(Player __instance)
-    {
-        ForsakenPowerSelectionRuntime.TryRotateSelection(__instance);
-    }
-}
-
-[HarmonyPatch(typeof(Hud), "UpdateGuardianPower")]
-internal static class HudUpdateGuardianPowerForsakenPowerSelectionPatch
-{
-    private static void Postfix(Player player)
-    {
-        ForsakenPowerSelectionRuntime.UpdateHudHint(Hud.instance, player);
-    }
-}

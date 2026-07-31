@@ -23,20 +23,6 @@ internal static partial class DespawnRulesManager
         LoadedCharacter = 2
     }
 
-    private enum CreatedZdoObservationDecision
-    {
-        Eligible = 0,
-        Ineligible = 1,
-        Unknown = 2
-    }
-
-    private enum ObservationApplicationResult
-    {
-        Applied = 0,
-        Dropped = 1,
-        Deferred = 2
-    }
-
     private readonly struct PendingDespawnObservation
     {
         internal PendingDespawnObservation(
@@ -110,15 +96,14 @@ internal static partial class DespawnRulesManager
             return;
         }
 
-        int authoritativePrefabHash = zdo.GetPrefab();
-        int prefabHash = authoritativePrefabHash;
+        int prefabHash = zdo.GetPrefab();
         if (prefabHash == 0)
         {
             prefabHash = prefabHashHint;
         }
 
-        CreatedZdoObservationDecision queueDecision = GetCreatedZdoObservationDecision(authoritativePrefabHash, prefabHashHint);
-        if (queueDecision == CreatedZdoObservationDecision.Ineligible)
+        if (BossRulesRuntime.TryGetCachedDespawnTrackingPrefabHashEligibility(prefabHash, out bool eligible) &&
+            !eligible)
         {
             return;
         }
@@ -159,19 +144,23 @@ internal static partial class DespawnRulesManager
                 continue;
             }
 
-            ObservationApplicationResult applyResult = ApplyQueuedObservation(observation, zdo, nowRealtime, out PendingDespawnObservation updatedObservation);
-            switch (applyResult)
+            if (ApplyObservation(observation, zdo) != null)
             {
-                case ObservationApplicationResult.Applied:
-                case ObservationApplicationResult.Dropped:
-                    PendingDespawnObservationRemovals.Add(observation.ZdoId);
-                    break;
-                case ObservationApplicationResult.Deferred:
-                    PendingDespawnObservationUpdates.Add(updatedObservation);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(applyResult), applyResult, null);
+                PendingDespawnObservationRemovals.Add(observation.ZdoId);
+                continue;
             }
+
+            if (TryDeferCreatedZdoObservation(
+                    observation,
+                    zdo,
+                    nowRealtime,
+                    out PendingDespawnObservation deferredObservation))
+            {
+                PendingDespawnObservationUpdates.Add(deferredObservation);
+                continue;
+            }
+
+            PendingDespawnObservationRemovals.Add(observation.ZdoId);
         }
 
         foreach (PendingDespawnObservation observation in PendingDespawnObservationUpdates)
@@ -330,26 +319,6 @@ internal static partial class DespawnRulesManager
         };
     }
 
-    private static ObservationApplicationResult ApplyQueuedObservation(
-        PendingDespawnObservation observation,
-        ZDO zdo,
-        float nowRealtime,
-        out PendingDespawnObservation updatedObservation)
-    {
-        updatedObservation = observation;
-        if (ApplyObservation(observation, zdo) != null)
-        {
-            return ObservationApplicationResult.Applied;
-        }
-
-        if (TryDeferCreatedZdoObservation(observation, zdo, nowRealtime, out updatedObservation))
-        {
-            return ObservationApplicationResult.Deferred;
-        }
-
-        return ObservationApplicationResult.Dropped;
-    }
-
     private static TrackedDespawnState? ApplyObservation(PendingDespawnObservation observation, ZDO zdo)
     {
         return ApplyObservation(
@@ -363,11 +332,20 @@ internal static partial class DespawnRulesManager
         int prefabHashHint,
         string prefabNameHint)
     {
-        if (!TryResolveObservationConfig(
+        string prefabName = string.IsNullOrWhiteSpace(prefabNameHint)
+            ? ""
+            : prefabNameHint;
+        int prefabHash = zdo.GetPrefab();
+        if (prefabHash == 0)
+        {
+            prefabHash = prefabHashHint;
+        }
+
+        if (!BossRulesRuntime.TryResolveDespawnTrackingRule(
                 zdo,
-                prefabHashHint,
-                prefabNameHint,
-                out string prefabName,
+                prefabHash,
+                prefabName,
+                out prefabName,
                 out float? rangeOverride,
                 out float? delayOverride,
                 out IReadOnlyCollection<DespawnRefundDrop> refunds))
@@ -383,36 +361,6 @@ internal static partial class DespawnRulesManager
             refunds);
     }
 
-    private static bool TryResolveObservationConfig(
-        ZDO zdo,
-        int prefabHashHint,
-        string prefabNameHint,
-        out string prefabName,
-        out float? rangeOverride,
-        out float? delayOverride,
-        out IReadOnlyCollection<DespawnRefundDrop> refunds)
-    {
-        prefabName = string.IsNullOrWhiteSpace(prefabNameHint) ? "" : prefabNameHint;
-        rangeOverride = null;
-        delayOverride = null;
-        refunds = Array.Empty<DespawnRefundDrop>();
-
-        int prefabHash = zdo.GetPrefab();
-        if (prefabHash == 0)
-        {
-            prefabHash = prefabHashHint;
-        }
-
-        return BossRulesRuntime.TryResolveDespawnTrackingRule(
-            zdo,
-            prefabHash,
-            prefabName,
-            out prefabName,
-            out rangeOverride,
-            out delayOverride,
-            out refunds);
-    }
-
     private static TrackedDespawnState ApplyObservationResolved(
         string prefabName,
         ZDO zdo,
@@ -422,39 +370,35 @@ internal static partial class DespawnRulesManager
     {
         TrackedDespawnState state = GetOrCreateTrackedDespawnState(zdo.m_uid);
         Character? loadedCharacter = TryGetLoadedTrackedCharacter(zdo);
+        Vector3 interestPoint;
         if (loadedCharacter != null)
         {
-            state.UpdateFromCharacter(loadedCharacter, rangeOverride, delayOverride, refunds);
-            PrimeTrackedDespawnInterestIfNeeded(state, loadedCharacter.GetCenterPoint());
+            state.NameLocalizationKey = loadedCharacter.m_name?.Trim() ?? "";
+            state.PrefabName = Utils.GetPrefabName(loadedCharacter.gameObject);
+            interestPoint = loadedCharacter.GetCenterPoint();
         }
         else
         {
-            state.UpdateFromZdoPrefab(prefabName, rangeOverride, delayOverride, refunds);
-            PrimeTrackedDespawnInterestIfNeeded(state, zdo.GetPosition());
+            state.PrefabName = prefabName ?? "";
+            GameObject? prefab = ZNetScene.instance?.GetPrefab(state.PrefabName);
+            state.NameLocalizationKey =
+                prefab?.GetComponent<Character>()?.m_name?.Trim() ?? "";
+            interestPoint = zdo.GetPosition();
         }
 
+        state.RangeOverride = rangeOverride;
+        state.DelayOverride = delayOverride;
+        state.Refunds.Clear();
+        if (refunds != null)
+        {
+            state.Refunds.AddRange(refunds);
+        }
+
+        PrimeTrackedDespawnInterestIfNeeded(state, interestPoint);
         BossRulesDebugLog.Client(
             $"Despawn tracking resolved prefab={prefabName} zdo={zdo.m_uid} loaded={loadedCharacter != null} range={(rangeOverride.HasValue ? rangeOverride.Value.ToString("0.##", CultureInfo.InvariantCulture) : "<default>")} delay={(delayOverride.HasValue ? delayOverride.Value.ToString("0.##", CultureInfo.InvariantCulture) : "<default>")} refunds={BossRulesDebugLog.FormatRefunds(refunds)}.");
         ScheduleTrackedDespawnCheck(zdo.m_uid, state, GetCurrentDespawnClockSeconds());
         return state;
-    }
-
-    private static CreatedZdoObservationDecision GetCreatedZdoObservationDecision(int authoritativePrefabHash, int prefabHashHint)
-    {
-        int prefabHash = authoritativePrefabHash != 0 ? authoritativePrefabHash : prefabHashHint;
-        if (BossRulesRuntime.TryGetCachedDespawnTrackingPrefabHashEligibility(prefabHash, out bool eligible))
-        {
-            return eligible
-                ? CreatedZdoObservationDecision.Eligible
-                : CreatedZdoObservationDecision.Ineligible;
-        }
-
-        if (!BossRulesRuntime.IsDespawnTrackingRuleLookupReady())
-        {
-            return CreatedZdoObservationDecision.Eligible;
-        }
-
-        return CreatedZdoObservationDecision.Unknown;
     }
 
     private static bool ShouldQueueDespawnObservation(int prefabHashHint, string prefabNameHint)

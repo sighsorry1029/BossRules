@@ -11,11 +11,6 @@ internal sealed class FloatRangeDefinition : IYamlConvertible
     public float? Min { get; set; }
     public float? Max { get; set; }
 
-    internal bool HasValues()
-    {
-        return Min.HasValue || Max.HasValue;
-    }
-
     void IYamlConvertible.Read(IParser parser, Type expectedType, ObjectDeserializer nestedObjectDeserializer)
     {
         if (parser.TryConsume<Scalar>(out Scalar? scalar))
@@ -68,7 +63,7 @@ internal static class RangeFormatting
 
     internal static string FormatShorthand(FloatRangeDefinition? range)
     {
-        if (range == null || !range.HasValues())
+        if (range == null || (!range.Min.HasValue && !range.Max.HasValue))
         {
             return "";
         }

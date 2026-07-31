@@ -14,7 +14,6 @@ internal static partial class AltarRuntime
     private static readonly Dictionary<OfferingBowl, string> RegisteredQueenDungeonOfferingBowls = new();
     private static readonly Dictionary<Room, DungeonGenerator> PendingQueenDungeonRooms = new();
     private static readonly Dictionary<string, List<AuthoredItemStandSlotTemplate>> AuthoredItemStandSlotsByPrefab = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<ItemStand, string> LooseItemStandAuthoredPathsByInstance = new();
     private static bool _pendingGameDataReapply;
     private static bool _loggedPendingGameDataWait;
     private static int _configurationGeneration;
@@ -26,27 +25,6 @@ internal static partial class AltarRuntime
         public Vector3 OfferingBowlLocalOffset { get; set; }
     }
 
-    internal enum OfferingBowlBlockReason
-    {
-        None = 0,
-        SameBossNearby,
-        RespawnCooldownActive,
-    }
-
-    internal readonly struct OfferingBowlBlockResult
-    {
-        internal static OfferingBowlBlockResult None => default;
-
-        public OfferingBowlBlockResult(bool blocked, OfferingBowlBlockReason reason)
-        {
-            Blocked = blocked;
-            Reason = reason;
-        }
-
-        public bool Blocked { get; }
-        public OfferingBowlBlockReason Reason { get; }
-    }
-
     internal static void Reload(IReadOnlyList<AltarConfigurationEntry> entries)
     {
         lock (Sync)
@@ -54,13 +32,15 @@ internal static partial class AltarRuntime
             AdvanceConfigurationGeneration();
             ActiveEntriesByPrefab.Clear();
             AuthoredItemStandSlotsByPrefab.Clear();
-            LooseItemStandAuthoredPathsByInstance.Clear();
             AltarItemStandHoverInfoFormatter.ClearRuntimeCaches();
+            OfferingBowlHoverInfoFormatter.ClearRuntimeCaches();
             _pendingGameDataReapply = true;
             _loggedPendingGameDataWait = false;
             foreach (AltarConfigurationEntry entry in entries)
             {
-                if (!entry.Enabled || !HasOverride(entry))
+                if (!entry.Enabled ||
+                    (entry.OfferingBowl == null &&
+                     entry.ItemStands is not { Count: > 0 }))
                 {
                     continue;
                 }
@@ -107,12 +87,12 @@ internal static partial class AltarRuntime
             PendingQueenDungeonRooms.Clear();
             ActiveEntriesByPrefab.Clear();
             AuthoredItemStandSlotsByPrefab.Clear();
-            LooseItemStandAuthoredPathsByInstance.Clear();
             PendingAltarBossSpawns.Clear();
             PendingAltarBossSpawnRemovals.Clear();
             _nextAltarSpawnMarkerRetryAt = 0f;
             _nextQueenDungeonRoomContextRetryAt = 0f;
             AltarItemStandHoverInfoFormatter.ResetRuntimeState();
+            OfferingBowlHoverInfoFormatter.ResetRuntimeState();
             AltarLocationResolver.ResetRuntimeState();
             QueenDungeonAltarSupport.ResetRuntimeState();
             _pendingGameDataReapply = false;
@@ -379,42 +359,40 @@ internal static partial class AltarRuntime
         }
     }
 
-    internal static OfferingBowlBlockResult EvaluateOfferingBowlBlock(OfferingBowl? offeringBowl)
+    internal static bool EvaluateOfferingBowlBlock(OfferingBowl? offeringBowl)
     {
         lock (Sync)
         {
             if (offeringBowl == null || ZNet.instance == null)
             {
-                return OfferingBowlBlockResult.None;
+                return false;
             }
 
             if (BossRulesManager.ShouldBlockConfiguredSameBossSpawn(offeringBowl.m_bossPrefab, offeringBowl.transform.position))
             {
-                return new OfferingBowlBlockResult(true, OfferingBowlBlockReason.SameBossNearby);
+                return true;
             }
 
             OfferingBowlRuntimeState? state = offeringBowl.GetComponent<OfferingBowlRuntimeState>();
             if (state == null || state.RespawnMinutes <= 0f)
             {
-                return OfferingBowlBlockResult.None;
+                return false;
             }
 
             long lastUseTicks = GetOfferingBowlLastUseTicks(offeringBowl, state);
             if (lastUseTicks <= 0L)
             {
-                return OfferingBowlBlockResult.None;
+                return false;
             }
 
             TimeSpan elapsed = ZNet.instance.GetTime() - new DateTime(lastUseTicks);
-            return elapsed.TotalMinutes >= state.RespawnMinutes
-                ? OfferingBowlBlockResult.None
-                : new OfferingBowlBlockResult(true, OfferingBowlBlockReason.RespawnCooldownActive);
+            return elapsed.TotalMinutes < state.RespawnMinutes;
         }
     }
 
-    internal static void NotifyOfferingBowlBlocked(OfferingBowl offeringBowl, Humanoid? user, OfferingBowlBlockResult result)
+    internal static void NotifyOfferingBowlBlocked(OfferingBowl offeringBowl, Humanoid? user)
     {
-        if (offeringBowl == null || user == null || !result.Blocked)
+        if (offeringBowl == null || user == null)
         {
             return;
         }
@@ -1035,17 +1013,13 @@ internal static partial class AltarRuntime
             return;
         }
 
-        foreach (ItemStand itemStand in unmatchedRelevantItemStands)
-        {
-            LooseItemStandAuthoredPathsByInstance.Remove(itemStand);
-        }
-
-        TryStampLooseItemStandAuthoredPaths(offeringBowl, prefabName, unmatchedRelevantItemStands);
+        Dictionary<ItemStand, string> authoredPathsByItemStand =
+            TryStampLooseItemStandAuthoredPaths(offeringBowl, prefabName, unmatchedRelevantItemStands);
         foreach (AltarItemStandDefinition definition in pathDefinitions)
         {
             string path = (definition.Path ?? "").Trim();
             ItemStand? mappedItemStand = unmatchedRelevantItemStands.FirstOrDefault(itemStand =>
-                LooseItemStandAuthoredPathsByInstance.TryGetValue(itemStand, out string? authoredPath) &&
+                authoredPathsByItemStand.TryGetValue(itemStand, out string? authoredPath) &&
                 string.Equals(authoredPath, path, StringComparison.Ordinal));
             if (mappedItemStand == null)
             {
@@ -1211,12 +1185,12 @@ internal static partial class AltarRuntime
     }
 
     // Authored path remapping lets loose ItemStand instances keep reference paths.
-    private static void TryStampLooseItemStandAuthoredPaths(
+    private static Dictionary<ItemStand, string> TryStampLooseItemStandAuthoredPaths(
         OfferingBowl offeringBowl,
         string prefabName,
         IReadOnlyList<ItemStand> relevantItemStands)
     {
-        CleanupLooseItemStandAuthoredPaths();
+        Dictionary<ItemStand, string> authoredPathsByItemStand = new();
         string normalizedPrefab = (prefabName ?? "").Trim();
         if (offeringBowl == null ||
             normalizedPrefab.Length == 0 ||
@@ -1226,29 +1200,11 @@ internal static partial class AltarRuntime
         {
             BossRulesDebugLog.Client(
                 $"Altar authored path remap skipped prefab={normalizedPrefab} templates={(AuthoredItemStandSlotsByPrefab.TryGetValue(normalizedPrefab, out List<AuthoredItemStandSlotTemplate>? existingTemplates) ? existingTemplates.Count : 0)} relevant={relevantItemStands.Count}.");
-            return;
+            return authoredPathsByItemStand;
         }
 
         HashSet<int> assignedItemStandIds = new();
         HashSet<string> assignedPaths = new(StringComparer.Ordinal);
-        foreach (ItemStand itemStand in relevantItemStands)
-        {
-            if (itemStand == null)
-            {
-                continue;
-            }
-
-            if (!LooseItemStandAuthoredPathsByInstance.TryGetValue(itemStand, out string? assignedPath) ||
-                string.IsNullOrWhiteSpace(assignedPath) ||
-                !templates.Any(template => string.Equals(template.Path, assignedPath, StringComparison.Ordinal)))
-            {
-                continue;
-            }
-
-            assignedItemStandIds.Add(itemStand.GetInstanceID());
-            assignedPaths.Add(assignedPath);
-        }
-
         List<(float Distance, ItemStand ItemStand, AuthoredItemStandSlotTemplate Template)> candidates = new();
         foreach (ItemStand itemStand in relevantItemStands)
         {
@@ -1281,36 +1237,13 @@ internal static partial class AltarRuntime
                 continue;
             }
 
-            LooseItemStandAuthoredPathsByInstance[itemStand] = template.Path;
+            authoredPathsByItemStand[itemStand] = template.Path;
             assignedItemStandIds.Add(itemStandId);
             assignedPaths.Add(template.Path);
             BossRulesDebugLog.Client($"Altar authored path assigned prefab={normalizedPrefab} path='{template.Path}' stand={itemStand.name}.");
         }
-    }
 
-    private static void CleanupLooseItemStandAuthoredPaths()
-    {
-        List<ItemStand>? destroyed = null;
-        foreach (ItemStand itemStand in LooseItemStandAuthoredPathsByInstance.Keys)
-        {
-            if (itemStand != null && itemStand.gameObject != null)
-            {
-                continue;
-            }
-
-            destroyed ??= new List<ItemStand>();
-            destroyed.Add(itemStand!);
-        }
-
-        if (destroyed == null)
-        {
-            return;
-        }
-
-        foreach (ItemStand itemStand in destroyed)
-        {
-            LooseItemStandAuthoredPathsByInstance.Remove(itemStand);
-        }
+        return authoredPathsByItemStand;
     }
 
     internal static OfferingBowlSnapshot CaptureOfferingBowlSnapshot(OfferingBowl offeringBowl)
@@ -1445,11 +1378,6 @@ internal static partial class AltarRuntime
                 .Where(itemDrop => itemDrop != null)
                 .Select(itemDrop => NormalizeReferencePrefabName(itemDrop.gameObject) ?? itemDrop.name ?? "")
                 .Where(name => name.Length > 0));
-    }
-
-    private static bool HasOverride(AltarConfigurationEntry entry)
-    {
-        return entry.OfferingBowl != null || entry.ItemStands is { Count: > 0 };
     }
 
     // Prefab and ItemStand value resolution.

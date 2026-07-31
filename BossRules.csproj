@@ -118,7 +118,6 @@
         <Compile Include="BossStonePerPlayerRuntime.cs"/>
         <Compile Include="BossStoneRuntimePatches.cs"/>
         <Compile Include="BossTamedPressureRuntime.cs"/>
-        <Compile Include="CreatureSpawnerDuplicateBlockRuntime.cs"/>
         <Compile Include="DespawnRefundExecutor.cs"/>
         <Compile Include="DespawnRulesManager.cs"/>
         <Compile Include="DespawnRulesManager.Messages.cs"/>

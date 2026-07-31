@@ -9,8 +9,7 @@ namespace BossRules;
 
 internal static class ForsakenPowerSelectionRuntime
 {
-    private const float GuardianPowerHintBaseOffsetDown = 8f;
-    private const float GuardianPowerHintFixedExtraOffsetDown = 8f;
+    private const float GuardianPowerHintOffsetDown = 16f;
 
     private static readonly Dictionary<string, int> GuardianPowerOrder = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -44,14 +43,7 @@ internal static class ForsakenPowerSelectionRuntime
 
     internal static void Shutdown()
     {
-        if (_guardianPowerHintText != null && _guardianPowerHintText.gameObject != null)
-        {
-            _guardianPowerHintText.gameObject.SetActive(false);
-            UnityEngine.Object.Destroy(_guardianPowerHintText.gameObject);
-        }
-
-        _guardianPowerHintText = null;
-        _guardianPowerHintHudInstanceId = 0;
+        DestroyGuardianPowerHint();
         CachedUnlockedGuardianPowers.Clear();
         _cachedUnlockedGuardianPowersPlayerInstanceId = 0;
         _unlockedGuardianPowersDirty = true;
@@ -216,13 +208,15 @@ internal static class ForsakenPowerSelectionRuntime
 
     private static TMP_Text EnsureGuardianPowerHint(Hud hud)
     {
+        int hudInstanceId = hud.GetInstanceID();
         if (_guardianPowerHintText != null &&
-            _guardianPowerHintHudInstanceId == hud.GetInstanceID() &&
+            _guardianPowerHintHudInstanceId == hudInstanceId &&
             _guardianPowerHintText.gameObject != null)
         {
             return _guardianPowerHintText;
         }
 
+        DestroyGuardianPowerHint();
         TMP_Text hintTemplate = hud.m_gpCooldown != null ? hud.m_gpCooldown : hud.m_gpName;
         _guardianPowerHintText = UnityEngine.Object.Instantiate(hintTemplate, hud.m_gpRoot);
         _guardianPowerHintText.name = "BossRules_ForsakenRotateHint";
@@ -233,8 +227,20 @@ internal static class ForsakenPowerSelectionRuntime
 
         RectTransform hintRect = _guardianPowerHintText.rectTransform;
         hintRect.SetParent(hud.m_gpRoot, false);
-        _guardianPowerHintHudInstanceId = hud.GetInstanceID();
+        _guardianPowerHintHudInstanceId = hudInstanceId;
         return _guardianPowerHintText;
+    }
+
+    private static void DestroyGuardianPowerHint()
+    {
+        if (_guardianPowerHintText != null && _guardianPowerHintText.gameObject != null)
+        {
+            _guardianPowerHintText.gameObject.SetActive(false);
+            UnityEngine.Object.Destroy(_guardianPowerHintText.gameObject);
+        }
+
+        _guardianPowerHintText = null;
+        _guardianPowerHintHudInstanceId = 0;
     }
 
     private static void HideGuardianPowerHint(Hud hud)
@@ -257,14 +263,15 @@ internal static class ForsakenPowerSelectionRuntime
         hintRect.pivot = new Vector2(0.5f, 1f);
         hintRect.anchoredPosition = new Vector2(
             iconRect.anchoredPosition.x,
-            iconRect.anchoredPosition.y - iconRect.rect.height * 0.5f - GuardianPowerHintBaseOffsetDown - GuardianPowerHintFixedExtraOffsetDown);
+            iconRect.anchoredPosition.y - iconRect.rect.height * 0.5f - GuardianPowerHintOffsetDown);
         hintRect.sizeDelta = new Vector2(Mathf.Max(iconRect.rect.width + 72f, 128f), hintRect.sizeDelta.y);
     }
 
     private static string GetCachedHintText()
     {
         KeyboardShortcut shortcut = BossRulesConfig.GetRotateForsakenPowerShortcut();
-        string rotateLabel = BossRulesRuntime.GetForsakenPowerRotateLabel();
+        string rotateLabel = BossRulesLocalization.Text(
+            BossRulesLocalization.MessageForsakenPowerRotateKey);
         if (_cachedHintText.Length == 0 ||
             !_cachedHintShortcut.Equals(shortcut) ||
             !string.Equals(_cachedHintRotateLabel, rotateLabel, StringComparison.Ordinal))

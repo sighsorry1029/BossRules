@@ -6,16 +6,15 @@ namespace BossRules;
 
 internal static class DespawnRefundExecutor
 {
-    internal static bool TryExecuteRefunds(Vector3 centerPoint, IReadOnlyCollection<DespawnRefundDrop> refunds)
+    internal static void ExecuteRefunds(Vector3 centerPoint, IReadOnlyCollection<DespawnRefundDrop> refunds)
     {
         if (refunds == null || refunds.Count == 0)
         {
             BossRulesDebugLog.Client($"Despawn refund skipped at {BossRulesDebugLog.FormatVector3(centerPoint)}: no refunds.");
-            return true;
+            return;
         }
 
         BossRulesDebugLog.Client($"Despawn refund executing fallback={BossRulesDebugLog.FormatVector3(centerPoint)}: {BossRulesDebugLog.FormatRefunds(refunds)}.");
-        bool anyDropped = false;
         foreach (DespawnRefundDrop refund in refunds)
         {
             if (refund == null || refund.Prefab == null || refund.Amount <= 0)
@@ -25,10 +24,7 @@ internal static class DespawnRefundExecutor
 
             Vector3 dropPoint = refund.DropPointOverride ?? centerPoint;
             SpawnStackedDrops(refund.Prefab, refund.Amount, dropPoint);
-            anyDropped = true;
         }
-
-        return anyDropped;
     }
 
     private static void SpawnStackedDrops(GameObject itemPrefab, int amount, Vector3 centerPoint)

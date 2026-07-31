@@ -55,11 +55,3 @@ internal sealed class ItemStandRuntimeState : MonoBehaviour
     public ItemStandSnapshot? Snapshot { get; set; }
     public bool Applied { get; set; }
 }
-
-internal sealed class BossStoneItemStandRuntimeState : MonoBehaviour
-{
-    public bool Resolved { get; set; }
-    public bool ShouldHandle { get; set; }
-    public string GuardianPowerName { get; set; } = "";
-    public string PlayerKey { get; set; } = "";
-}

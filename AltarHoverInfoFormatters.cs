@@ -271,7 +271,6 @@ internal static class AltarItemStandHoverInfoFormatter
     {
         RelevantOfferingBowlCache.Clear();
         HoverInfoCache.Clear();
-        OfferingBowlHoverInfoFormatter.ClearRuntimeCaches();
     }
 
     internal static void ResetRuntimeState()
@@ -280,7 +279,6 @@ internal static class AltarItemStandHoverInfoFormatter
         RegisteredItemStandIds.Clear();
         RelevantOfferingBowlCache.Clear();
         HoverInfoCache.Clear();
-        OfferingBowlHoverInfoFormatter.ResetRuntimeState();
     }
 
     internal static IReadOnlyList<ItemStand> FindRelevantItemStands(OfferingBowl offeringBowl)

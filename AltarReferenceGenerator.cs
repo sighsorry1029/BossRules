@@ -64,20 +64,6 @@ internal sealed class AltarReferenceItemStandDefinition
     public string? GuardianPower { get; set; }
 }
 
-internal sealed class AltarReferenceOwnerSection
-{
-    internal AltarReferenceOwnerSection(
-        string ownerName,
-        IEnumerable<AltarReferenceEntry> entries)
-    {
-        OwnerName = ownerName;
-        Entries = entries.ToList();
-    }
-
-    internal string OwnerName { get; }
-    internal List<AltarReferenceEntry> Entries { get; }
-}
-
 internal sealed class FlowStringListDefinition : IYamlConvertible
 {
     public FlowStringListDefinition()
@@ -266,21 +252,17 @@ internal static class AltarReferenceGenerator
 
         StringBuilder builder = new();
         bool wroteSection = false;
-        foreach (AltarReferenceOwnerSection section in entries
-                     .Select(entry => new
-                     {
-                         Entry = entry,
-                         OwnerName = AltarPrefabOwnerResolver.NormalizeOwnerName(
-                             entry.OwnerName)
-                     })
+        foreach (IGrouping<string, AltarReferenceEntry> section in entries
                      .OrderBy(entry =>
-                         AltarPrefabOwnerResolver.GetOwnerSortBucket(entry.OwnerName))
-                     .ThenBy(entry => entry.OwnerName, StringComparer.OrdinalIgnoreCase)
-                     .ThenBy(entry => entry.Entry.Prefab, StringComparer.OrdinalIgnoreCase)
-                     .GroupBy(entry => entry.OwnerName, StringComparer.OrdinalIgnoreCase)
-                     .Select(group => new AltarReferenceOwnerSection(
-                         group.Key,
-                         group.Select(entry => entry.Entry))))
+                         AltarPrefabOwnerResolver.GetOwnerSortBucket(
+                             AltarPrefabOwnerResolver.NormalizeOwnerName(entry.OwnerName)))
+                     .ThenBy(
+                         entry => AltarPrefabOwnerResolver.NormalizeOwnerName(entry.OwnerName),
+                         StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(entry => entry.Prefab, StringComparer.OrdinalIgnoreCase)
+                     .GroupBy(
+                         entry => AltarPrefabOwnerResolver.NormalizeOwnerName(entry.OwnerName),
+                         StringComparer.OrdinalIgnoreCase))
         {
             if (wroteSection)
             {
@@ -288,9 +270,9 @@ internal static class AltarReferenceGenerator
             }
 
             builder.Append("# ===== ")
-                .Append(section.OwnerName)
+                .Append(section.Key)
                 .AppendLine(" =====");
-            foreach (AltarReferenceEntry entry in section.Entries)
+            foreach (AltarReferenceEntry entry in section)
             {
                 builder.AppendLine(SerializeReferenceEntry(entry));
             }

@@ -13,6 +13,7 @@ internal static partial class ForsakenPowerRuntime
     private static IReadOnlyList<ForsakenPowerDefinition>? _definition;
     private static bool _pendingApply;
     private static bool _lastEnabled;
+    private static int _objectDbInstanceId;
 
     internal static void Configure(IReadOnlyList<ForsakenPowerDefinition>? definition)
     {
@@ -48,16 +49,26 @@ internal static partial class ForsakenPowerRuntime
             SnapshotsByHash.Clear();
             _pendingApply = false;
             _lastEnabled = false;
+            _objectDbInstanceId = 0;
         }
     }
 
     internal static void ProcessDeferredApply()
     {
         bool enabled = BossRulesConfig.IsForsakenPowerRulesEnabled();
-        IReadOnlyList<ForsakenPowerDefinition>? definition;
+        int objectDbInstanceId = ObjectDB.instance != null
+            ? ObjectDB.instance.GetInstanceID()
+            : 0;
         lock (Sync)
         {
-            definition = _definition;
+            if (_objectDbInstanceId != objectDbInstanceId)
+            {
+                _objectDbInstanceId = objectDbInstanceId;
+                RestoreSnapshotsNotOwnedByDataForgeLocked();
+                SnapshotsByHash.Clear();
+                _pendingApply = true;
+            }
+
             if (!_pendingApply && _lastEnabled == enabled)
             {
                 return;
@@ -72,7 +83,7 @@ internal static partial class ForsakenPowerRuntime
         lock (Sync)
         {
             enabled = BossRulesConfig.IsForsakenPowerRulesEnabled();
-            definition = _definition;
+            IReadOnlyList<ForsakenPowerDefinition>? definition = _definition;
             RestoreSnapshotsNotOwnedByDataForgeLocked();
 
             if (enabled && definition is { Count: > 0 })

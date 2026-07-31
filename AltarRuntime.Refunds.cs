@@ -318,7 +318,8 @@ internal static partial class AltarRuntime
                 amount = Math.Max(1, parsedAmount);
             }
 
-            if (BossRulesRuntime.TryResolveItemPrefab(itemName, "altar auto refund", out GameObject itemPrefab))
+            GameObject? itemPrefab = ResolveItemPrefab(itemName, "altar auto refund");
+            if (itemPrefab != null)
             {
                 resolvedRefunds.Add(new DespawnRefundDrop(itemPrefab, amount, refundPoint));
             }

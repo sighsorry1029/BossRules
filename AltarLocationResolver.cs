@@ -247,7 +247,7 @@ internal static class AltarLocationResolver
             }
         }
 
-        candidateRoot ??= GetRootTransform(location.transform);
+        candidateRoot ??= location.transform.root;
         return candidateRoot != null ? TrimCloneSuffix(candidateRoot.gameObject.name) : "";
     }
 
@@ -361,17 +361,6 @@ internal static class AltarLocationResolver
         {
             return null;
         }
-    }
-
-    private static Transform GetRootTransform(Transform transform)
-    {
-        Transform current = transform;
-        while (current.parent != null)
-        {
-            current = current.parent;
-        }
-
-        return current;
     }
 
     private static string TrimCloneSuffix(string? name)

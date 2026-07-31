@@ -7,6 +7,14 @@ using UnityEngine;
 
 namespace BossRules;
 
+internal sealed class BossStoneItemStandRuntimeState : MonoBehaviour
+{
+    public bool Resolved { get; set; }
+    public bool ShouldHandle { get; set; }
+    public string GuardianPowerName { get; set; } = "";
+    public string PlayerKey { get; set; } = "";
+}
+
 internal static class BossStonePerPlayerRuntime
 {
     private const string StartTemplePrefabName = "StartTemple";
@@ -47,11 +55,6 @@ internal static class BossStonePerPlayerRuntime
     private static readonly Dictionary<long, PendingBossStoneResetRequest> PendingBossStoneResetRequests = new();
     private static long _nextBossStoneSacrificeRequestId = 1L;
     private static long _nextBossStoneResetRequestId = 1L;
-
-    internal static void Initialize()
-    {
-        EnsureRpcRegistered();
-    }
 
     internal static void EnsureRpcRegistered()
     {

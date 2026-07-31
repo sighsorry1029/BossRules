@@ -36,8 +36,8 @@ internal static partial class DespawnRulesManager
     private static readonly List<ZDOID> PendingDespawnDetachPersistRemovals = new();
     private static readonly System.Diagnostics.Stopwatch DespawnClock = System.Diagnostics.Stopwatch.StartNew();
     private static float _nextDespawnTrackingRefreshAt;
-    private static float _defaultDespawnRange = 64f;
-    private static float _defaultDespawnDelaySeconds = 90f;
+    private static float _defaultDespawnRange = BossRuleConfigurationState.FallbackDespawnRange;
+    private static float _defaultDespawnDelaySeconds = BossRuleConfigurationState.FallbackDespawnDelaySeconds;
 
     private readonly struct PendingDespawnDetachPersist
     {
@@ -71,46 +71,6 @@ internal static partial class DespawnRulesManager
         internal long LastInterestedPlayerId { get; set; }
         internal long CountdownRecipientPlayerId { get; set; }
         internal long ScheduledCheckAtBucket { get; set; } = long.MinValue;
-
-        internal void UpdateFromCharacter(
-            Character character,
-            float? rangeOverride,
-            float? delayOverride,
-            IReadOnlyCollection<DespawnRefundDrop> refunds)
-        {
-            NameLocalizationKey = character.m_name?.Trim() ?? "";
-            PrefabName = Utils.GetPrefabName(character.gameObject);
-            RangeOverride = rangeOverride;
-            DelayOverride = delayOverride;
-            Refunds.Clear();
-            if (refunds == null)
-            {
-                return;
-            }
-
-            Refunds.AddRange(refunds);
-        }
-
-        internal void UpdateFromZdoPrefab(
-            string prefabName,
-            float? rangeOverride,
-            float? delayOverride,
-            IReadOnlyCollection<DespawnRefundDrop> refunds)
-        {
-            PrefabName = prefabName ?? "";
-            GameObject? prefab = ZNetScene.instance?.GetPrefab(PrefabName);
-            NameLocalizationKey =
-                prefab?.GetComponent<Character>()?.m_name?.Trim() ?? "";
-            RangeOverride = rangeOverride;
-            DelayOverride = delayOverride;
-            Refunds.Clear();
-            if (refunds == null)
-            {
-                return;
-            }
-
-            Refunds.AddRange(refunds);
-        }
 
         internal void ResetCountdown()
         {
@@ -162,34 +122,14 @@ internal static partial class DespawnRulesManager
 
         if (!BossRulesConfig.IsDespawnRulesEnabled())
         {
-            if (TrackedDespawnTargets.Count > 0)
-            {
-                TrackedDespawnTargets.Clear();
-                PendingDespawnRemovals.Clear();
-            }
-
-            if (ScheduledDespawnChecks.Count > 0)
-            {
-                ScheduledDespawnChecks.Clear();
-            }
-
-            if (PendingDespawnObservations.Count > 0)
-            {
-                PendingDespawnObservations.Clear();
-                PendingDespawnObservationRemovals.Clear();
-            }
-
-            if (PendingDespawnObservationUpdates.Count > 0)
-            {
-                PendingDespawnObservationUpdates.Clear();
-            }
-
-            if (PendingDespawnDetachPersists.Count > 0)
-            {
-                PendingDespawnDetachPersists.Clear();
-                PendingDespawnDetachPersistRemovals.Clear();
-            }
-
+            TrackedDespawnTargets.Clear();
+            PendingDespawnRemovals.Clear();
+            ScheduledDespawnChecks.Clear();
+            PendingDespawnObservations.Clear();
+            PendingDespawnObservationRemovals.Clear();
+            PendingDespawnObservationUpdates.Clear();
+            PendingDespawnDetachPersists.Clear();
+            PendingDespawnDetachPersistRemovals.Clear();
             _nextDespawnTrackingRefreshAt = 0f;
             _pendingBootstrapScan = true;
             _lastObservedDespawnLookupVersion = -1;
@@ -422,7 +362,7 @@ internal static partial class DespawnRulesManager
             IReadOnlyCollection<DespawnRefundDrop> refunds = ResolveRefundsForExecution(zdo, state);
             BossRulesDebugLog.Client(
                 $"Despawn executing prefab={state.PrefabName} zdo={zdoId} refunds={BossRulesDebugLog.FormatRefunds(refunds)} position={BossRulesDebugLog.FormatVector3(probePoint)}.");
-            _ = DespawnRefundExecutor.TryExecuteRefunds(probePoint, refunds);
+            DespawnRefundExecutor.ExecuteRefunds(probePoint, refunds);
             ApplyDespawnCleanupBeforeDestroy(zdo);
             zdo.SetOwner(ZDOMan.instance.m_sessionID);
             ZDOMan.instance.DestroyZDO(zdo);
@@ -454,18 +394,12 @@ internal static partial class DespawnRulesManager
                 zdo.GetPrefab(),
                 state.PrefabName,
                 out string prefabName,
-                out float? rangeOverride,
-                out float? delayOverride,
+                out _,
+                out _,
                 out IReadOnlyCollection<DespawnRefundDrop> refunds))
         {
             state.PrefabName = string.IsNullOrWhiteSpace(prefabName) ? state.PrefabName : prefabName;
-            state.RangeOverride = rangeOverride;
-            state.DelayOverride = delayOverride;
-            state.Refunds.Clear();
-            if (refunds != null)
-            {
-                state.Refunds.AddRange(refunds);
-            }
+            return refunds ?? Array.Empty<DespawnRefundDrop>();
         }
 
         return state.Refunds;
@@ -499,11 +433,7 @@ internal static partial class DespawnRulesManager
                 continue;
             }
 
-            if (BossRulesRuntime.TryResolveDespawnTrackingRule(
-                    state.PrefabName,
-                    out _,
-                    out _,
-                    out _))
+            if (BossRulesRuntime.IsEligibleDespawnTrackingPrefabName(state.PrefabName))
             {
                 continue;
             }

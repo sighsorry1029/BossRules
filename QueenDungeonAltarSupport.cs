@@ -67,16 +67,6 @@ internal static class QueenDungeonAltarSupport
             : previousPrefabName.Trim();
     }
 
-    internal static bool TryResolveRoomLocationPrefab(
-        DungeonGenerator? generator,
-        DungeonDB.RoomData? roomData,
-        out string locationPrefab)
-    {
-        locationPrefab = "";
-        return IsTargetRoom(roomData) &&
-               TryResolveGeneratorLocationPrefab(generator, out locationPrefab);
-    }
-
     internal static bool TryResolveGeneratorLocationPrefab(
         DungeonGenerator? generator,
         out string locationPrefab)

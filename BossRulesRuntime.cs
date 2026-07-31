@@ -47,9 +47,7 @@ internal static class BossRulesRuntime
     private static BossRuleConfigurationState _configuration = BossRuleConfigurationState.Empty;
     private static int _despawnLookupVersion;
 
-    internal static void Reload(
-        BossRuleConfigurationState configuration,
-        IReadOnlyList<ForsakenPowerDefinition> forsakenPowers)
+    internal static void Reload(BossRuleConfigurationState configuration)
     {
         lock (Sync)
         {
@@ -65,8 +63,7 @@ internal static class BossRulesRuntime
                 _configuration.DefaultDespawnDelaySeconds);
             DespawnRulesManager.MarkBootstrapScanDirty();
             BossTamedPressureRuntime.Configure(
-                _configuration.BossTamedPressureRules);
-            ForsakenPowerRuntime.Configure(forsakenPowers);
+                _configuration.BossTamedPressureRule);
         }
     }
 
@@ -83,16 +80,11 @@ internal static class BossRulesRuntime
             _bossCatalog = BossCatalog.Empty;
             _despawnLookupVersion++;
             DespawnRulesManager.ResetRuntimeState();
-            DespawnRulesManager.ConfigureDefaults(64f, 90f);
+            DespawnRulesManager.ConfigureDefaults(
+                BossRuleConfigurationState.FallbackDespawnRange,
+                BossRuleConfigurationState.FallbackDespawnDelaySeconds);
             BossTamedPressureRuntime.ResetRuntimeState();
-            ForsakenPowerRuntime.Reset();
         }
-    }
-
-    internal static string GetForsakenPowerRotateLabel()
-    {
-        return BossRulesLocalization.Text(
-            BossRulesLocalization.MessageForsakenPowerRotateKey);
     }
 
     internal static int GetDespawnLookupVersion()
@@ -145,67 +137,6 @@ internal static class BossRulesRuntime
 
         EnsureRuntimeState();
         return _runtimeState.BootstrapPrefabs.Contains(prefabName);
-    }
-
-    internal static bool TryResolveDespawnTrackingRule(
-        string prefabName,
-        out float? rangeOverride,
-        out float? delayOverride,
-        out IReadOnlyCollection<DespawnRefundDrop> refunds)
-    {
-        rangeOverride = null;
-        delayOverride = null;
-        refunds = Array.Empty<DespawnRefundDrop>();
-        if (string.IsNullOrWhiteSpace(prefabName))
-        {
-            return false;
-        }
-
-        EnsureRuntimeState();
-        if (_runtimeState.RulesByPrefab.TryGetValue(prefabName, out CompiledDespawnRule? explicitRule))
-        {
-            rangeOverride = explicitRule.RangeOverride;
-            delayOverride = explicitRule.DelayOverride;
-            refunds = ResolveRefundsForRule(explicitRule, null);
-            return true;
-        }
-
-        return IsAutoDetectedBossPrefab(prefabName);
-    }
-
-    internal static bool TryResolveDespawnTrackingRule(
-        int prefabHash,
-        out string prefabName,
-        out float? rangeOverride,
-        out float? delayOverride,
-        out IReadOnlyCollection<DespawnRefundDrop> refunds)
-    {
-        prefabName = "";
-        rangeOverride = null;
-        delayOverride = null;
-        refunds = Array.Empty<DespawnRefundDrop>();
-        if (prefabHash == 0)
-        {
-            return false;
-        }
-
-        EnsureRuntimeState();
-        if (!_runtimeState.PrefabNamesByHash.TryGetValue(prefabHash, out prefabName) ||
-            string.IsNullOrWhiteSpace(prefabName))
-        {
-            prefabName = ResolvePrefabName(prefabHash);
-        }
-
-        if (_runtimeState.RulesByPrefabHash.TryGetValue(prefabHash, out CompiledDespawnRule? explicitRule))
-        {
-            rangeOverride = explicitRule.RangeOverride;
-            delayOverride = explicitRule.DelayOverride;
-            refunds = ResolveRefundsForRule(explicitRule, null);
-            return !string.IsNullOrWhiteSpace(prefabName);
-        }
-
-        return IsAutoDetectedBossPrefab(prefabHash) &&
-               !string.IsNullOrWhiteSpace(prefabName);
     }
 
     internal static bool TryResolveDespawnTrackingRule(
@@ -382,33 +313,6 @@ internal static class BossRulesRuntime
         }
 
         return TrimCloneSuffix(prefab.name);
-    }
-
-    internal static bool TryResolveItemPrefab(string itemName, string context, out GameObject prefab)
-    {
-        prefab = null!;
-        string normalized = (itemName ?? "").Trim();
-        if (normalized.Length == 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' contains an empty item prefab name.");
-            return false;
-        }
-
-        GameObject? resolved = ObjectDB.instance?.GetItemPrefab(normalized) ?? ZNetScene.instance?.GetPrefab(normalized);
-        if (resolved == null)
-        {
-            WarnInvalidEntry($"Entry '{context}' references unknown item prefab '{normalized}'.");
-            return false;
-        }
-
-        if (!resolved.TryGetComponent(out ItemDrop _))
-        {
-            WarnInvalidEntry($"Entry '{context}' references '{normalized}', but it is not an item prefab.");
-            return false;
-        }
-
-        prefab = resolved;
-        return true;
     }
 
     internal static void WarnInvalidEntry(string message)

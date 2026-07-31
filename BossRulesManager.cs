@@ -8,6 +8,9 @@ internal static class BossRulesManager
 {
     private static readonly Dictionary<string, HashSet<Character>> TrackedBossesByPrefab =
         new(StringComparer.OrdinalIgnoreCase);
+    private static readonly int CreatureSpawnerDuplicateBlockTicksZdoKey =
+        $"{BossRulesPlugin.ModName}.creature_spawner_same_boss_duplicate_block_ticks".GetStableHashCode();
+    private static readonly Dictionary<int, long> LastCreatureSpawnerBlockTicksByInstanceId = new();
 
     internal static bool ShouldBlockConfiguredSameBossSpawn(GameObject? targetPrefab, Vector3 sourcePosition)
     {
@@ -46,6 +49,42 @@ internal static class BossRulesManager
         }
 
         return false;
+    }
+
+    internal static bool ShouldBlockCreatureSpawnerUpdate(CreatureSpawner? creatureSpawner)
+    {
+        if (creatureSpawner == null ||
+            !TryGetCreatureSpawnerTimingZdo(creatureSpawner, out ZNetView nview, out ZDO zdo) ||
+            !nview.IsOwner())
+        {
+            return false;
+        }
+
+        float radius = BossRulesConfig.GetSameBossDuplicateBlockRadius();
+        if (radius <= 0f)
+        {
+            ClearCreatureSpawnerBlockTicks(creatureSpawner, zdo);
+            return false;
+        }
+
+        if (ShouldBlockSameBossSpawn(
+                creatureSpawner.m_creaturePrefab,
+                creatureSpawner.transform.position,
+                radius))
+        {
+            RecordCreatureSpawnerBlock(creatureSpawner, zdo);
+            return true;
+        }
+
+        return ShouldDelayCreatureSpawnerAfterBlock(creatureSpawner, zdo);
+    }
+
+    internal static void RemoveCreatureSpawner(CreatureSpawner? creatureSpawner)
+    {
+        if (creatureSpawner != null)
+        {
+            LastCreatureSpawnerBlockTicksByInstanceId.Remove(creatureSpawner.GetInstanceID());
+        }
     }
 
     internal static void TrackBossCharacter(Character? character)
@@ -106,7 +145,83 @@ internal static class BossRulesManager
     internal static void ClearRuntimeState()
     {
         TrackedBossesByPrefab.Clear();
-        CreatureSpawnerDuplicateBlockRuntime.ClearRuntimeState();
+        LastCreatureSpawnerBlockTicksByInstanceId.Clear();
+    }
+
+    private static void RecordCreatureSpawnerBlock(CreatureSpawner creatureSpawner, ZDO zdo)
+    {
+        long nowTicks = GetNetworkTimeTicks();
+        LastCreatureSpawnerBlockTicksByInstanceId[creatureSpawner.GetInstanceID()] = nowTicks;
+        zdo.Set(CreatureSpawnerDuplicateBlockTicksZdoKey, nowTicks);
+        zdo.Set(ZDOVars.s_aliveTime, nowTicks);
+    }
+
+    private static bool ShouldDelayCreatureSpawnerAfterBlock(CreatureSpawner creatureSpawner, ZDO zdo)
+    {
+        if (creatureSpawner.m_respawnTimeMinuts <= 0f)
+        {
+            ClearCreatureSpawnerBlockTicks(creatureSpawner, zdo);
+            return false;
+        }
+
+        long lastBlockTicks = GetCreatureSpawnerBlockTicks(creatureSpawner, zdo);
+        if (lastBlockTicks <= 0L)
+        {
+            return false;
+        }
+
+        long nowTicks = GetNetworkTimeTicks();
+        if (lastBlockTicks > nowTicks)
+        {
+            RecordCreatureSpawnerBlock(creatureSpawner, zdo);
+            return true;
+        }
+
+        double elapsedMinutes = (new DateTime(nowTicks) - new DateTime(lastBlockTicks)).TotalMinutes;
+        if (elapsedMinutes < creatureSpawner.m_respawnTimeMinuts)
+        {
+            return true;
+        }
+
+        ClearCreatureSpawnerBlockTicks(creatureSpawner, zdo);
+        return false;
+    }
+
+    private static long GetCreatureSpawnerBlockTicks(CreatureSpawner creatureSpawner, ZDO zdo)
+    {
+        LastCreatureSpawnerBlockTicksByInstanceId.TryGetValue(creatureSpawner.GetInstanceID(), out long localTicks);
+        return Math.Max(localTicks, zdo.GetLong(CreatureSpawnerDuplicateBlockTicksZdoKey, 0L));
+    }
+
+    private static void ClearCreatureSpawnerBlockTicks(CreatureSpawner creatureSpawner, ZDO zdo)
+    {
+        LastCreatureSpawnerBlockTicksByInstanceId.Remove(creatureSpawner.GetInstanceID());
+        zdo.Set(CreatureSpawnerDuplicateBlockTicksZdoKey, 0L);
+    }
+
+    private static bool TryGetCreatureSpawnerTimingZdo(
+        CreatureSpawner creatureSpawner,
+        out ZNetView nview,
+        out ZDO zdo)
+    {
+        nview = null!;
+        zdo = null!;
+        if (!creatureSpawner.TryGetComponent(out ZNetView? candidate) ||
+            candidate == null)
+        {
+            return false;
+        }
+
+        nview = candidate;
+        zdo = nview.GetZDO();
+        return zdo != null;
+    }
+
+    private static long GetNetworkTimeTicks()
+    {
+        return ZNet.instance != null
+            ? ZNet.instance.GetTime().Ticks
+            : DateTime.UtcNow.Ticks;
     }
 
     private static bool TryGetTrackableBossPrefabName(Character? character, out string prefabName)

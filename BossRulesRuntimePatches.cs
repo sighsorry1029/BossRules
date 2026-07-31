@@ -31,7 +31,6 @@ internal static class ZoneSystemSpawnLocationAltarPatch
     {
         public string PrefabName { get; set; } = "";
         public string PreviousLocationSpawnContext { get; set; } = "";
-        public bool HasLocationSpawnContext { get; set; }
     }
 
     private static void Prefix(ZoneSystem.ZoneLocation location, ref SpawnLocationState? __state)
@@ -48,7 +47,6 @@ internal static class ZoneSystemSpawnLocationAltarPatch
         };
         state.PreviousLocationSpawnContext =
             QueenDungeonAltarSupport.BeginLocationSpawnContext(prefabName);
-        state.HasLocationSpawnContext = true;
         __state = state;
     }
 
@@ -64,7 +62,7 @@ internal static class ZoneSystemSpawnLocationAltarPatch
 
     private static Exception? Finalizer(Exception? __exception, SpawnLocationState? __state)
     {
-        if (__state?.HasLocationSpawnContext == true)
+        if (__state != null)
         {
             QueenDungeonAltarSupport.RestoreLocationSpawnContext(
                 __state.PreviousLocationSpawnContext);
@@ -128,9 +126,8 @@ internal static class DungeonGeneratorPlaceQueenRoomAltarPatch
         {
             Generator = __instance
         };
-        QueenDungeonAltarSupport.TryResolveRoomLocationPrefab(
+        QueenDungeonAltarSupport.TryResolveGeneratorLocationPrefab(
             __instance,
-            roomData,
             out string locationPrefab);
         state.LocationPrefab = locationPrefab;
         __state = state;
@@ -228,14 +225,13 @@ internal static class OfferingBowlInteractAltarPatch
         }
 
         AltarRuntime.ReconcileLooseOfferingBowl(__instance);
-        AltarRuntime.OfferingBowlBlockResult blockResult = AltarRuntime.EvaluateOfferingBowlBlock(__instance);
-        if (!blockResult.Blocked)
+        if (!AltarRuntime.EvaluateOfferingBowlBlock(__instance))
         {
             return true;
         }
 
         __result = true;
-        AltarRuntime.NotifyOfferingBowlBlocked(__instance, user, blockResult);
+        AltarRuntime.NotifyOfferingBowlBlocked(__instance, user);
         return false;
     }
 }
@@ -251,14 +247,13 @@ internal static class OfferingBowlUseItemAltarPatch
         }
 
         AltarRuntime.ReconcileLooseOfferingBowl(__instance);
-        AltarRuntime.OfferingBowlBlockResult blockResult = AltarRuntime.EvaluateOfferingBowlBlock(__instance);
-        if (!blockResult.Blocked)
+        if (!AltarRuntime.EvaluateOfferingBowlBlock(__instance))
         {
             return true;
         }
 
         __result = true;
-        AltarRuntime.NotifyOfferingBowlBlocked(__instance, user, blockResult);
+        AltarRuntime.NotifyOfferingBowlBlocked(__instance, user);
         return false;
     }
 }
@@ -275,7 +270,7 @@ internal static class OfferingBowlRpcSpawnBossAltarPatch
 
         if (ZNet.instance.IsServer() &&
             BossRulesConfig.IsAltarRulesEnabled() &&
-            AltarRuntime.EvaluateOfferingBowlBlock(__instance).Blocked)
+            AltarRuntime.EvaluateOfferingBowlBlock(__instance))
         {
             return false;
         }
@@ -411,7 +406,7 @@ internal static class CreatureSpawnerUpdateSpawnerDuplicateBlockPatch
 {
     private static bool Prefix(CreatureSpawner __instance)
     {
-        return !CreatureSpawnerDuplicateBlockRuntime.ShouldBlockUpdate(__instance);
+        return !BossRulesManager.ShouldBlockCreatureSpawnerUpdate(__instance);
     }
 }
 
@@ -420,7 +415,7 @@ internal static class CreatureSpawnerOnDestroyDuplicateBlockPatch
 {
     private static void Prefix(CreatureSpawner __instance)
     {
-        CreatureSpawnerDuplicateBlockRuntime.RemoveSpawner(__instance);
+        BossRulesManager.RemoveCreatureSpawner(__instance);
     }
 }
 

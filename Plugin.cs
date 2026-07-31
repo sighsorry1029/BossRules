@@ -15,7 +15,7 @@ namespace BossRules;
 public sealed class BossRulesPlugin : BaseUnityPlugin
 {
     internal const string ModName = "BossRules";
-    internal const string ModVersion = "1.0.3";
+    internal const string ModVersion = "1.0.4";
     internal const string Author = "sighsorry";
     internal const string ModGUID = $"{Author}.{ModName}";
     internal const string AltarYamlFileName = $"{ModName}.altar.yml";
@@ -24,7 +24,6 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
     internal const string ForsakenPowersYamlFileName = $"{ModName}.forsakenPowers.yml";
     private const float FileReloadDebounceSeconds = 0.25f;
 
-    internal static BossRulesPlugin? Instance { get; private set; }
     internal static readonly ManualLogSource BossRulesLogger = BepInEx.Logging.Logger.CreateLogSource(ModName);
 
     private static ConfigSync? _configSync;
@@ -34,11 +33,13 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
     private CustomSyncedValue<string> _syncedForsakenPowersYaml = null!;
     private FileSystemWatcher? _watcher;
     private float _reloadDueAt = -1f;
-    private int _yamlReloadRequested;
+    private int _altarYamlReloadRequested;
+    private int _rulesYamlReloadRequested;
+    private int _forsakenPowersYamlReloadRequested;
+    private bool _reloadAltarYaml;
+    private bool _reloadRulesYaml;
+    private bool _reloadForsakenPowersYaml;
     private ConfigEntry<Toggle> _lockConfiguration = null!;
-    private IReadOnlyList<AltarConfigurationEntry> _altarEntries = Array.Empty<AltarConfigurationEntry>();
-    private BossRuleConfigurationState _rulesConfiguration = BossRuleConfigurationState.Empty;
-    private IReadOnlyList<ForsakenPowerDefinition> _forsakenPowers = Array.Empty<ForsakenPowerDefinition>();
 
     public enum Toggle
     {
@@ -55,16 +56,11 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
     internal static string RulesYamlFilePath => Path.Combine(ConfigDirectoryPath, RulesYamlFileName);
     internal static string ForsakenPowersYamlFilePath => Path.Combine(ConfigDirectoryPath, ForsakenPowersYamlFileName);
     internal static bool IsSourceOfTruth => ConfigSync.IsSourceOfTruth;
-    internal static IReadOnlyList<AltarConfigurationEntry> AltarEntries =>
-        Instance?._altarEntries ?? Array.Empty<AltarConfigurationEntry>();
-    internal static BossRuleConfigurationState RulesConfiguration =>
-        Instance?._rulesConfiguration ?? BossRuleConfigurationState.Empty;
     internal static bool IsRuntimeServer() => ZNet.instance != null && ZNet.instance.IsServer();
 
     private void Awake()
     {
         EnsureServerSyncInitialized();
-        Instance = this;
         Directory.CreateDirectory(ConfigDirectoryPath);
         AltarConfigurationFiles.EnsureDefaultFiles();
         BossRuleConfigurationFiles.EnsureDefaultFile();
@@ -84,7 +80,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         LoadLocalForsakenPowersYamlAndPublish("startup");
         _harmony.PatchAll(typeof(BossRulesPlugin).Assembly);
         Localizer.Initialize(this);
-        BossStonePerPlayerRuntime.Initialize();
+        BossStonePerPlayerRuntime.EnsureRpcRegistered();
         DespawnRulesManager.EnsureMessageRpcRegistered();
         BossRulesConsoleCommands.Register();
         InitializeWatcher();
@@ -110,11 +106,6 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
 
     private void OnDestroy()
     {
-        if (Instance == this)
-        {
-            Instance = null;
-        }
-
         if (_configSync != null)
         {
             ConfigSync.SourceOfTruthChanged -= HandleSourceOfTruthChanged;
@@ -125,7 +116,10 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         _syncedForsakenPowersYaml.ValueChanged -= HandleSyncedForsakenPowersYamlChanged;
         _watcher?.Dispose();
         _watcher = null;
-        Interlocked.Exchange(ref _yamlReloadRequested, 0);
+        Interlocked.Exchange(ref _altarYamlReloadRequested, 0);
+        Interlocked.Exchange(ref _rulesYamlReloadRequested, 0);
+        Interlocked.Exchange(ref _forsakenPowersYamlReloadRequested, 0);
+        ClearPendingYamlReloads();
         AltarRuntime.Shutdown();
         BossStonePerPlayerRuntime.Shutdown();
         DespawnRulesManager.ShutdownMessages();
@@ -133,6 +127,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         AltarReferenceGenerator.ShutdownAutoRefresh();
         BossRulesManager.ClearRuntimeState();
         BossRulesRuntime.Reset();
+        ForsakenPowerRuntime.Reset();
         DataForgeStatusEffectBridge.Shutdown();
         Localizer.Shutdown();
         _harmony.UnpatchSelf();
@@ -225,26 +220,62 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         };
         _watcher.Changed += QueueYamlReload;
         _watcher.Created += QueueYamlReload;
+        _watcher.Deleted += QueueYamlReload;
         _watcher.Renamed += QueueYamlReload;
         _watcher.EnableRaisingEvents = true;
     }
 
     private void QueueYamlReload(object sender, FileSystemEventArgs args)
     {
-        string fileName = Path.GetFileName(args.FullPath);
-        if (!string.Equals(fileName, AltarYamlFileName, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(fileName, RulesYamlFileName, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(fileName, ForsakenPowersYamlFileName, StringComparison.OrdinalIgnoreCase))
+        QueueYamlReloadForFile(Path.GetFileName(args.FullPath));
+        if (args is RenamedEventArgs renamedArgs)
         {
+            QueueYamlReloadForFile(Path.GetFileName(renamedArgs.OldFullPath));
+        }
+    }
+
+    private void QueueYamlReloadForFile(string fileName)
+    {
+        if (string.Equals(fileName, AltarYamlFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            Interlocked.Exchange(ref _altarYamlReloadRequested, 1);
             return;
         }
 
-        Interlocked.Exchange(ref _yamlReloadRequested, 1);
+        if (string.Equals(fileName, RulesYamlFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            Interlocked.Exchange(ref _rulesYamlReloadRequested, 1);
+            return;
+        }
+
+        if (string.Equals(fileName, ForsakenPowersYamlFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            Interlocked.Exchange(ref _forsakenPowersYamlReloadRequested, 1);
+        }
     }
 
     private void ProcessQueuedYamlReload()
     {
-        if (Interlocked.Exchange(ref _yamlReloadRequested, 0) != 0)
+        bool reloadRequested = false;
+        if (Interlocked.Exchange(ref _altarYamlReloadRequested, 0) != 0)
+        {
+            _reloadAltarYaml = true;
+            reloadRequested = true;
+        }
+
+        if (Interlocked.Exchange(ref _rulesYamlReloadRequested, 0) != 0)
+        {
+            _reloadRulesYaml = true;
+            reloadRequested = true;
+        }
+
+        if (Interlocked.Exchange(ref _forsakenPowersYamlReloadRequested, 0) != 0)
+        {
+            _reloadForsakenPowersYaml = true;
+            reloadRequested = true;
+        }
+
+        if (reloadRequested)
         {
             _reloadDueAt = IsSourceOfTruth
                 ? Time.realtimeSinceStartup + FileReloadDebounceSeconds
@@ -254,6 +285,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         if (!IsSourceOfTruth)
         {
             _reloadDueAt = -1f;
+            ClearPendingYamlReloads();
             return;
         }
 
@@ -263,9 +295,31 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         }
 
         _reloadDueAt = -1f;
-        LoadLocalAltarYamlAndPublish("file change");
-        LoadLocalRulesYamlAndPublish("file change");
-        LoadLocalForsakenPowersYamlAndPublish("file change");
+        bool reloadAltarYaml = _reloadAltarYaml;
+        bool reloadRulesYaml = _reloadRulesYaml;
+        bool reloadForsakenPowersYaml = _reloadForsakenPowersYaml;
+        ClearPendingYamlReloads();
+        if (reloadAltarYaml)
+        {
+            LoadLocalAltarYamlAndPublish("file change");
+        }
+
+        if (reloadRulesYaml)
+        {
+            LoadLocalRulesYamlAndPublish("file change");
+        }
+
+        if (reloadForsakenPowersYaml)
+        {
+            LoadLocalForsakenPowersYamlAndPublish("file change");
+        }
+    }
+
+    private void ClearPendingYamlReloads()
+    {
+        _reloadAltarYaml = false;
+        _reloadRulesYaml = false;
+        _reloadForsakenPowersYaml = false;
     }
 
     private void HandleSourceOfTruthChanged(bool sourceOfTruth)
@@ -398,7 +452,6 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
             return false;
         }
 
-        _altarEntries = entries;
         BossRulesDebugLog.Client($"Parsed altar YAML source={source} entries={entries.Count}.");
         AltarRuntime.Reload(entries);
         return true;
@@ -411,8 +464,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
             return false;
         }
 
-        _rulesConfiguration = configuration;
-        BossRulesRuntime.Reload(_rulesConfiguration, _forsakenPowers);
+        BossRulesRuntime.Reload(configuration);
         return true;
     }
 
@@ -423,8 +475,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
             return false;
         }
 
-        _forsakenPowers = entries;
-        BossRulesRuntime.Reload(_rulesConfiguration, _forsakenPowers);
+        ForsakenPowerRuntime.Configure(entries);
         return true;
     }
 }

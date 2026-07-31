@@ -70,12 +70,15 @@ internal sealed class BossDespawnDefinition
 
 internal sealed class BossRuleConfigurationState
 {
+    internal const float FallbackDespawnRange = 64f;
+    internal const float FallbackDespawnDelaySeconds = 90f;
+
     internal static BossRuleConfigurationState Empty => new();
 
-    internal float DefaultDespawnRange { get; set; } = 64f;
-    internal float DefaultDespawnDelaySeconds { get; set; } = 90f;
+    internal float DefaultDespawnRange { get; set; } = FallbackDespawnRange;
+    internal float DefaultDespawnDelaySeconds { get; set; } = FallbackDespawnDelaySeconds;
     internal List<BossDespawnDefinition> DespawnRules { get; } = new();
-    internal List<BossTamedPressureDefinition> BossTamedPressureRules { get; } = new();
+    internal BossTamedPressureDefinition? BossTamedPressureRule { get; set; }
 }
 
 internal sealed class BossTamedPressureDefinition
@@ -141,7 +144,7 @@ internal static class BossRuleConfiguration
 
             state = Normalize(parsed ?? new BossRuleConfigurationSection());
             BossRulesPlugin.BossRulesLogger.LogInfo(
-                $"Loaded boss rules YAML from {source}: {state.DespawnRules.Count} despawn entries, {state.BossTamedPressureRules.Count} boss tamed pressure entries.");
+                $"Loaded boss rules YAML from {source}: {state.DespawnRules.Count} despawn entries, {(state.BossTamedPressureRule != null ? 1 : 0)} boss tamed pressure entries.");
             return true;
         }
         catch (Exception ex)
@@ -164,7 +167,7 @@ internal static class BossRuleConfiguration
         if (section.BossTamedPressure != null)
         {
             NormalizeBossTamedPressure(section.BossTamedPressure);
-            state.BossTamedPressureRules.Add(section.BossTamedPressure);
+            state.BossTamedPressureRule = section.BossTamedPressure;
         }
 
         if (section.Localization != null && !_reportedLegacyLocalization)
@@ -182,7 +185,9 @@ internal static class BossRuleConfiguration
     {
         if (string.IsNullOrWhiteSpace(rawDefaults))
         {
-            return (64f, 90f);
+            return (
+                BossRuleConfigurationState.FallbackDespawnRange,
+                BossRuleConfigurationState.FallbackDespawnDelaySeconds);
         }
 
         string raw = rawDefaults!.Trim();
@@ -192,8 +197,18 @@ internal static class BossRuleConfiguration
             throw new FormatException($"despawn.defaults '{raw}' has too many values. Expected 'range, delaySeconds'.");
         }
 
-        float range = ParseDefaultFloat(parts, 0, "range", raw, 64f);
-        float delaySeconds = ParseDefaultFloat(parts, 1, "delaySeconds", raw, 90f);
+        float range = ParseDefaultFloat(
+            parts,
+            0,
+            "range",
+            raw,
+            BossRuleConfigurationState.FallbackDespawnRange);
+        float delaySeconds = ParseDefaultFloat(
+            parts,
+            1,
+            "delaySeconds",
+            raw,
+            BossRuleConfigurationState.FallbackDespawnDelaySeconds);
         return (range, delaySeconds);
     }
 

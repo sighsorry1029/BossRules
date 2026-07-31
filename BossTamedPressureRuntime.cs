@@ -20,14 +20,12 @@ internal static class BossTamedPressureRuntime
     private static readonly int ActiveUntilKey = "BossRules_BossTamedPressure_Until".GetStableHashCode();
     private static readonly int IncomingMultiplierKey = "BossRules_BossTamedPressure_Incoming".GetStableHashCode();
     private static readonly int OutgoingMultiplierKey = "BossRules_BossTamedPressure_Outgoing".GetStableHashCode();
-    private static readonly int GenerationKey = "BossRules_BossTamedPressure_Generation".GetStableHashCode();
-    private static readonly List<Rule> Rules = new();
     private static readonly List<BossCandidate> BossCandidateBuffer = new();
     private static readonly List<TargetCandidate> TargetCandidateBuffer = new();
     private static readonly List<ZDO> BossZdoBuffer = new();
     private static readonly List<ZDO> SectorZdoBuffer = new();
     private static readonly List<ZDOID> TargetIdBuffer = new();
-    private static int CurrentGeneration = 1;
+    private static Rule? _rule;
     private static CharacterPrefabCatalog _characterPrefabCatalog = CharacterPrefabCatalog.Empty;
 
     private sealed class Rule
@@ -96,21 +94,19 @@ internal static class BossTamedPressureRuntime
         public double ExpiresAt { get; set; }
     }
 
-    internal static void Configure(IEnumerable<BossTamedPressureDefinition> definitions)
+    internal static void Configure(BossTamedPressureDefinition? definition)
     {
-        AdvanceGeneration();
-        Rules.Clear();
+        _rule = null;
         ClearTransientBuffers();
-        foreach (BossTamedPressureDefinition definition in definitions ?? Array.Empty<BossTamedPressureDefinition>())
+        if (definition != null)
         {
-            Rules.Add(CompileRule(definition));
+            _rule = CompileRule(definition);
         }
     }
 
     internal static void ResetRuntimeState()
     {
-        AdvanceGeneration();
-        Rules.Clear();
+        _rule = null;
         ClearTransientBuffers();
         _characterPrefabCatalog = CharacterPrefabCatalog.Empty;
     }
@@ -133,24 +129,22 @@ internal static class BossTamedPressureRuntime
             return;
         }
 
-        if (Rules.Count == 0)
+        Rule? rule = _rule;
+        if (rule == null)
         {
             return;
         }
 
-        foreach (Rule rule in Rules)
+        if (now >= rule.NextScanAt)
         {
-            if (now >= rule.NextScanAt)
-            {
-                ScanRule(rule, now);
-                rule.NextScanAt = now + ScanInterval;
-            }
+            ScanRule(rule, now);
+            rule.NextScanAt = now + ScanInterval;
+        }
 
-            if (now >= rule.NextDamageAt)
-            {
-                ApplyPeriodicDamage(rule, now);
-                rule.NextDamageAt = now + DamageInterval;
-            }
+        if (now >= rule.NextDamageAt)
+        {
+            ApplyPeriodicDamage(rule, now);
+            rule.NextDamageAt = now + DamageInterval;
         }
     }
 
@@ -372,17 +366,8 @@ internal static class BossTamedPressureRuntime
         float newUntil = (float)Math.Max(existingUntil, expiresAt);
         zdo.Set(ActiveUntilKey, newUntil);
 
-        float incoming = rule.IncomingDamageMultiplier;
-        float outgoing = rule.OutgoingDamageMultiplier;
-        if (existingUntil > now && zdo.GetInt(GenerationKey, 0) == CurrentGeneration)
-        {
-            incoming = Math.Max(zdo.GetFloat(IncomingMultiplierKey, 1f), incoming);
-            outgoing = Math.Min(zdo.GetFloat(OutgoingMultiplierKey, 1f), outgoing);
-        }
-
-        zdo.Set(GenerationKey, CurrentGeneration);
-        zdo.Set(IncomingMultiplierKey, Mathf.Clamp(incoming, 0f, 10f));
-        zdo.Set(OutgoingMultiplierKey, Mathf.Clamp(outgoing, 0f, 10f));
+        zdo.Set(IncomingMultiplierKey, Mathf.Clamp(rule.IncomingDamageMultiplier, 0f, 10f));
+        zdo.Set(OutgoingMultiplierKey, Mathf.Clamp(rule.OutgoingDamageMultiplier, 0f, 10f));
 
         // Damage multipliers are evaluated by the damage owner, which can be a client on dedicated servers.
         ZDOMan.instance?.ForceSendZDO(targetId);
@@ -678,18 +663,6 @@ internal static class BossTamedPressureRuntime
     private static double GetTimeSeconds()
     {
         return ZNet.instance?.GetTimeSeconds() ?? Time.time;
-    }
-
-    private static void AdvanceGeneration()
-    {
-        unchecked
-        {
-            CurrentGeneration++;
-            if (CurrentGeneration <= 0)
-            {
-                CurrentGeneration = 1;
-            }
-        }
     }
 
     private static void CopyTargetIds(Rule rule, List<ZDOID> targetIds)
