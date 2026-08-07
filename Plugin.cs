@@ -15,7 +15,7 @@ namespace BossRules;
 public sealed class BossRulesPlugin : BaseUnityPlugin
 {
     internal const string ModName = "BossRules";
-    internal const string ModVersion = "1.0.5";
+    internal const string ModVersion = "1.0.6";
     internal const string Author = "sighsorry";
     internal const string ModGUID = $"{Author}.{ModName}";
     internal const string AltarYamlFileName = $"{ModName}.altar.yml";
