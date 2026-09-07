@@ -30,6 +30,7 @@ internal static class BossStonePerPlayerRuntime
     private const int MaxPendingBossStoneSacrificeRequestsPerSender = 16;
     private const float BossStoneResetRetryIntervalSeconds = 0.5f;
     private const float BossStoneResetRequestTimeoutSeconds = 10f;
+    private const int MaxCompletedBossStoneResetRequests = 128;
     private static readonly HashSet<string> PerPlayerBossStoneLocationPrefabs = new(StringComparer.OrdinalIgnoreCase)
     {
         StartTemplePrefabName,
@@ -81,6 +82,10 @@ internal static class BossStonePerPlayerRuntime
     private static readonly Dictionary<long, PendingBossStoneResetRequest> PendingBossStoneResetRequests = new();
     private static long _nextBossStoneSacrificeRequestId = DateTime.UtcNow.Ticks;
     private static long _nextBossStoneResetRequestId = 1L;
+    private static readonly Dictionary<long, (long PlayerId, int RemovedCount)> CompletedBossStoneResetRequests = new();
+    private static ZRoutedRpc? _completedBossStoneResetRpcInstance;
+    private static long _completedBossStoneResetServerSender;
+    private static long _retiredBossStoneResetRequestId;
 
     internal static void EnsureRpcRegistered()
     {
@@ -109,29 +114,7 @@ internal static class BossStonePerPlayerRuntime
         PendingBossStoneSacrificeRequests.Clear();
         LastBossStoneSacrificeRequestIdsBySender.Clear();
         PendingBossStoneResetRequests.Clear();
-    }
-
-    internal static bool TryRequestReset(string exactPlayerName, out string message)
-    {
-        if (!TryResolveKnownPlayerName(exactPlayerName, out string resolvedPlayerName))
-        {
-            string normalizedPlayerName = (exactPlayerName ?? "").Trim();
-            message = normalizedPlayerName.Length == 0
-                ? "Syntax: bossrules:bossstone reset <exactPlayerName>"
-                : $"Player '{normalizedPlayerName}' not found. Use exact player name.";
-            return false;
-        }
-
-        EnsureRpcRegistered();
-        if (ZRoutedRpc.instance == null)
-        {
-            message = "Boss stone reset is unavailable because routed RPC is not ready.";
-            return false;
-        }
-
-        ZRoutedRpc.instance.InvokeRoutedRPC(BossStoneResetRequestRpc, resolvedPlayerName);
-        message = $"Queued boss stone reset request for '{resolvedPlayerName}'. Awaiting server result.";
-        return true;
+        ClearCompletedBossStoneResetRequests();
     }
 
     internal static void ProcessPendingSacrificeRequests()
@@ -165,55 +148,6 @@ internal static class BossStonePerPlayerRuntime
             }
 
             CompletePendingBossStoneSacrificeRequest(key, reason);
-        }
-    }
-
-    internal static void ProcessPendingResetRequests()
-    {
-        if (ZRoutedRpc.instance == null ||
-            ZNet.instance == null ||
-            !ZNet.instance.IsServer() ||
-            PendingBossStoneResetRequests.Count == 0)
-        {
-            return;
-        }
-
-        float now = Time.realtimeSinceStartup;
-        long[] requestIds = PendingBossStoneResetRequests.Keys.ToArray();
-        foreach (long requestId in requestIds)
-        {
-            if (!PendingBossStoneResetRequests.TryGetValue(requestId, out PendingBossStoneResetRequest? request) ||
-                request == null ||
-                now < request.NextRetryAt)
-            {
-                continue;
-            }
-
-            if (now - request.CreatedAt >= BossStoneResetRequestTimeoutSeconds)
-            {
-                CompletePendingBossStoneResetRequest(
-                    requestId,
-                    $"Boss stone reset failed for '{request.TargetPlayerName}': target did not acknowledge within {BossStoneResetRequestTimeoutSeconds:0.#}s.");
-                continue;
-            }
-
-            if (TryGetHostedLocalPlayerName(out string hostedLocalPlayerName) &&
-                string.Equals(request.TargetPlayerName, hostedLocalPlayerName, StringComparison.Ordinal))
-            {
-                ZRoutedRpc.instance.InvokeRoutedRPC(BossStoneResetApplyRpc, request.RequestId);
-                request.NextRetryAt = now + BossStoneResetRetryIntervalSeconds;
-                continue;
-            }
-
-            ZNetPeer? targetPeer = ZNet.instance.GetPeerByPlayerName(request.TargetPlayerName);
-            if (targetPeer == null || !targetPeer.IsReady())
-            {
-                request.NextRetryAt = now + BossStoneResetRetryIntervalSeconds;
-                continue;
-            }
-
-            ZRoutedRpc.instance.InvokeRoutedRPC(targetPeer.m_uid, BossStoneResetApplyRpc, request.RequestId);
-            request.NextRetryAt = now + BossStoneResetRetryIntervalSeconds;
         }
     }
 
@@ -453,35 +387,6 @@ internal static class BossStonePerPlayerRuntime
         RefreshAllBossStoneVisuals();
 
         return true;
-    }
-
-    private static bool TryResolveKnownPlayerName(string playerName, out string resolvedPlayerName)
-    {
-        resolvedPlayerName = "";
-        string normalizedPlayerName = (playerName ?? "").Trim();
-        if (normalizedPlayerName.Length == 0)
-        {
-            return false;
-        }
-
-        if (Player.m_localPlayer != null &&
-            string.Equals(Player.m_localPlayer.GetPlayerName(), normalizedPlayerName, StringComparison.OrdinalIgnoreCase))
-        {
-            resolvedPlayerName = Player.m_localPlayer.GetPlayerName();
-            return true;
-        }
-
-        foreach (ZNet.PlayerInfo playerInfo in ZNet.instance?.GetPlayerList() ?? new List<ZNet.PlayerInfo>())
-        {
-            string candidateName = (playerInfo.m_name ?? "").Trim();
-            if (string.Equals(candidateName, normalizedPlayerName, StringComparison.OrdinalIgnoreCase))
-            {
-                resolvedPlayerName = candidateName;
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static bool TryGetBossStone(ItemStand? itemStand, out BossStone? bossStone)
@@ -795,6 +700,58 @@ internal static class BossStonePerPlayerRuntime
             : ItemStandNviewRef(itemStand) ?? itemStand.GetComponent<ZNetView>();
     }
 
+    internal static bool TryRequestReset(string exactPlayerName, out string message)
+    {
+        if (!TryResolveKnownPlayerName(exactPlayerName, out string resolvedPlayerName))
+        {
+            string normalizedPlayerName = (exactPlayerName ?? "").Trim();
+            message = normalizedPlayerName.Length == 0
+                ? "Syntax: bossrules:bossstone reset <exactPlayerName>"
+                : $"Player '{normalizedPlayerName}' not found. Use exact player name.";
+            return false;
+        }
+
+        EnsureRpcRegistered();
+        if (ZRoutedRpc.instance == null)
+        {
+            message = "Boss stone reset is unavailable because routed RPC is not ready.";
+            return false;
+        }
+
+        ZRoutedRpc.instance.InvokeRoutedRPC(BossStoneResetRequestRpc, resolvedPlayerName);
+        message = $"Queued boss stone reset request for '{resolvedPlayerName}'. Awaiting server result.";
+        return true;
+    }
+
+    private static bool TryResolveKnownPlayerName(string playerName, out string resolvedPlayerName)
+    {
+        resolvedPlayerName = "";
+        string normalizedPlayerName = (playerName ?? "").Trim();
+        if (normalizedPlayerName.Length == 0)
+        {
+            return false;
+        }
+
+        if (Player.m_localPlayer != null &&
+            string.Equals(Player.m_localPlayer.GetPlayerName(), normalizedPlayerName, StringComparison.OrdinalIgnoreCase))
+        {
+            resolvedPlayerName = Player.m_localPlayer.GetPlayerName();
+            return true;
+        }
+
+        foreach (ZNet.PlayerInfo playerInfo in ZNet.instance?.GetPlayerList() ?? new List<ZNet.PlayerInfo>())
+        {
+            string candidateName = (playerInfo.m_name ?? "").Trim();
+            if (string.Equals(candidateName, normalizedPlayerName, StringComparison.OrdinalIgnoreCase))
+            {
+                resolvedPlayerName = candidateName;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static void OnBossStoneResetRequestRpc(long sender, string exactPlayerName)
     {
         if (ZRoutedRpc.instance == null ||
@@ -824,24 +781,115 @@ internal static class BossStonePerPlayerRuntime
         ProcessPendingResetRequests();
     }
 
-    private static void OnBossStoneResetApplyRpc(long sender, long requestId)
+    internal static void ProcessPendingResetRequests()
     {
-        bool isServerSender = IsServerRoutedSender(sender);
-        Player? localPlayer = Player.m_localPlayer;
-        if (!isServerSender)
+        if (ZRoutedRpc.instance == null ||
+            ZNet.instance == null ||
+            !ZNet.instance.IsServer() ||
+            PendingBossStoneResetRequests.Count == 0)
         {
             return;
         }
 
-        if (localPlayer == null)
+        float now = Time.realtimeSinceStartup;
+        long[] requestIds = PendingBossStoneResetRequests.Keys.ToArray();
+        foreach (long requestId in requestIds)
+        {
+            if (!PendingBossStoneResetRequests.TryGetValue(requestId, out PendingBossStoneResetRequest? request) ||
+                request == null ||
+                now < request.NextRetryAt)
+            {
+                continue;
+            }
+
+            if (now - request.CreatedAt >= BossStoneResetRequestTimeoutSeconds)
+            {
+                CompletePendingBossStoneResetRequest(
+                    requestId,
+                    $"Boss stone reset failed for '{request.TargetPlayerName}': target did not acknowledge within {BossStoneResetRequestTimeoutSeconds:0.#}s.");
+                continue;
+            }
+
+            if (TryGetHostedLocalPlayerName(out string hostedLocalPlayerName) &&
+                string.Equals(request.TargetPlayerName, hostedLocalPlayerName, StringComparison.Ordinal))
+            {
+                ZRoutedRpc.instance.InvokeRoutedRPC(BossStoneResetApplyRpc, request.RequestId);
+                request.NextRetryAt = now + BossStoneResetRetryIntervalSeconds;
+                continue;
+            }
+
+            ZNetPeer? targetPeer = ZNet.instance.GetPeerByPlayerName(request.TargetPlayerName);
+            if (targetPeer == null || !targetPeer.IsReady())
+            {
+                request.NextRetryAt = now + BossStoneResetRetryIntervalSeconds;
+                continue;
+            }
+
+            ZRoutedRpc.instance.InvokeRoutedRPC(targetPeer.m_uid, BossStoneResetApplyRpc, request.RequestId);
+            request.NextRetryAt = now + BossStoneResetRetryIntervalSeconds;
+        }
+    }
+
+    private static void OnBossStoneResetApplyRpc(long sender, long requestId)
+    {
+        bool isServerSender = IsServerRoutedSender(sender);
+        Player? localPlayer = Player.m_localPlayer;
+        ZRoutedRpc? rpc = ZRoutedRpc.instance;
+        if (!isServerSender || requestId <= 0L || localPlayer == null || rpc == null)
+        {
+            return;
+        }
+
+        long playerId = localPlayer.GetPlayerID();
+        if (playerId == 0L)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(rpc, _completedBossStoneResetRpcInstance) ||
+            sender != _completedBossStoneResetServerSender)
+        {
+            ClearCompletedBossStoneResetRequests();
+            _completedBossStoneResetRpcInstance = rpc;
+            _completedBossStoneResetServerSender = sender;
+        }
+
+        if (CompletedBossStoneResetRequests.TryGetValue(requestId, out (long PlayerId, int RemovedCount) completed))
+        {
+            if (completed.PlayerId == playerId)
+            {
+                rpc.InvokeRoutedRPC(BossStoneResetAckRpc, requestId, completed.RemovedCount);
+            }
+
+            return;
+        }
+
+        if (requestId <= _retiredBossStoneResetRequestId)
         {
             return;
         }
 
         int removedCount = ClearBossStonePlayerKeys(localPlayer);
+        CompletedBossStoneResetRequests[requestId] = (playerId, removedCount);
+        if (CompletedBossStoneResetRequests.Count > MaxCompletedBossStoneResetRequests)
+        {
+            long retiredRequestId = CompletedBossStoneResetRequests.Keys.Min();
+            CompletedBossStoneResetRequests.Remove(retiredRequestId);
+            // Evicted results cannot be acknowledged accurately; never apply them again.
+            _retiredBossStoneResetRequestId = Math.Max(_retiredBossStoneResetRequestId, retiredRequestId);
+        }
+
         RefreshAllBossStoneVisuals();
         Console.instance?.Print($"Removed {removedCount} boss stone keys from '{localPlayer.GetPlayerName()}'.");
-        ZRoutedRpc.instance?.InvokeRoutedRPC(BossStoneResetAckRpc, requestId, removedCount);
+        rpc.InvokeRoutedRPC(BossStoneResetAckRpc, requestId, removedCount);
+    }
+
+    private static void ClearCompletedBossStoneResetRequests()
+    {
+        CompletedBossStoneResetRequests.Clear();
+        _completedBossStoneResetRpcInstance = null;
+        _completedBossStoneResetServerSender = 0L;
+        _retiredBossStoneResetRequestId = 0L;
     }
 
     private static void OnBossStoneResetAckRpc(long sender, long requestId, int removedCount)
@@ -870,23 +918,6 @@ internal static class BossStonePerPlayerRuntime
         }
 
         Console.instance?.Print(message);
-    }
-
-    private static bool IsPerPlayerBossStoneLocation(Location location)
-    {
-        if (location == null)
-        {
-            return false;
-        }
-
-        string prefabName = AltarLocationResolver.TryResolveLocationPrefabName(location, out string resolvedPrefabName)
-            ? resolvedPrefabName
-            : Utils.GetPrefabName(location.gameObject.name);
-        int aliasSeparatorIndex = prefabName.IndexOf(':');
-        string basePrefabName = aliasSeparatorIndex > 0
-            ? prefabName.Substring(0, aliasSeparatorIndex).Trim()
-            : prefabName;
-        return PerPlayerBossStoneLocationPrefabs.Contains(basePrefabName);
     }
 
     private static bool IsAdminRequestSender(long sender)
@@ -930,6 +961,68 @@ internal static class BossStonePerPlayerRuntime
 
         hostedLocalPlayerName = Player.m_localPlayer.GetPlayerName()?.Trim() ?? "";
         return hostedLocalPlayerName.Length > 0;
+    }
+
+    private static void CompletePendingBossStoneResetRequest(long requestId, string message)
+    {
+        if (!PendingBossStoneResetRequests.TryGetValue(requestId, out PendingBossStoneResetRequest? request) ||
+            request == null)
+        {
+            return;
+        }
+
+        PendingBossStoneResetRequests.Remove(requestId);
+        SendBossStoneResetStatus(request.RequesterPeerId, message);
+    }
+
+    private static void SendBossStoneResetStatus(long requesterPeerId, string message)
+    {
+        if (ZRoutedRpc.instance == null)
+        {
+            Console.instance?.Print(message);
+            return;
+        }
+
+        if (requesterPeerId == 0L)
+        {
+            Console.instance?.Print(message);
+            return;
+        }
+
+        ZRoutedRpc.instance.InvokeRoutedRPC(requesterPeerId, BossStoneResetStatusRpc, message);
+    }
+
+    private static bool IsServerRoutedSender(long sender)
+    {
+        if (ZRoutedRpc.instance == null || ZNet.instance == null)
+        {
+            return false;
+        }
+
+        if (ZNet.instance.IsServer())
+        {
+            return RoutedRpcIdRef(ZRoutedRpc.instance) == sender;
+        }
+
+        ZNetPeer? serverPeer = ZNet.instance.GetServerPeer();
+        return serverPeer != null && serverPeer.m_uid == sender;
+    }
+
+    private static bool IsPerPlayerBossStoneLocation(Location location)
+    {
+        if (location == null)
+        {
+            return false;
+        }
+
+        string prefabName = AltarLocationResolver.TryResolveLocationPrefabName(location, out string resolvedPrefabName)
+            ? resolvedPrefabName
+            : Utils.GetPrefabName(location.gameObject.name);
+        int aliasSeparatorIndex = prefabName.IndexOf(':');
+        string basePrefabName = aliasSeparatorIndex > 0
+            ? prefabName.Substring(0, aliasSeparatorIndex).Trim()
+            : prefabName;
+        return PerPlayerBossStoneLocationPrefabs.Contains(basePrefabName);
     }
 
     private static bool TryNormalizePlayerKey(string playerKey, out string normalizedPlayerKey)
@@ -977,51 +1070,6 @@ internal static class BossStonePerPlayerRuntime
         }
 
         BossRulesDebugLog.Client($"Boss stone sacrifice request sender={key.Sender} request={key.RequestId}: {reason}.");
-    }
-
-    private static void CompletePendingBossStoneResetRequest(long requestId, string message)
-    {
-        if (!PendingBossStoneResetRequests.TryGetValue(requestId, out PendingBossStoneResetRequest? request) ||
-            request == null)
-        {
-            return;
-        }
-
-        PendingBossStoneResetRequests.Remove(requestId);
-        SendBossStoneResetStatus(request.RequesterPeerId, message);
-    }
-
-    private static void SendBossStoneResetStatus(long requesterPeerId, string message)
-    {
-        if (ZRoutedRpc.instance == null)
-        {
-            Console.instance?.Print(message);
-            return;
-        }
-
-        if (requesterPeerId == 0L)
-        {
-            Console.instance?.Print(message);
-            return;
-        }
-
-        ZRoutedRpc.instance.InvokeRoutedRPC(requesterPeerId, BossStoneResetStatusRpc, message);
-    }
-
-    private static bool IsServerRoutedSender(long sender)
-    {
-        if (ZRoutedRpc.instance == null || ZNet.instance == null)
-        {
-            return false;
-        }
-
-        if (ZNet.instance.IsServer())
-        {
-            return RoutedRpcIdRef(ZRoutedRpc.instance) == sender;
-        }
-
-        ZNetPeer? serverPeer = ZNet.instance.GetServerPeer();
-        return serverPeer != null && serverPeer.m_uid == sender;
     }
 
     private static int GetOrientation(ItemStand itemStand)

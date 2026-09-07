@@ -37,6 +37,7 @@ internal static class BossRulesRuntime
 
     private static readonly object Sync = new();
     private static RuntimeState _runtimeState = RuntimeState.Empty;
+    private static bool _runtimeStateReady;
     private static BossCatalog _bossCatalog = BossCatalog.Empty;
     private static int _runtimeGameDataSignature = -1;
     private static int _runtimeConfigurationVersion = -1;
@@ -53,6 +54,7 @@ internal static class BossRulesRuntime
         {
             _configuration = configuration ?? BossRuleConfigurationState.Empty;
             _runtimeState = RuntimeState.Empty;
+            _runtimeStateReady = false;
             _runtimeGameDataSignature = -1;
             _runtimeConfigurationVersion = -1;
             _configurationVersion++;
@@ -73,6 +75,7 @@ internal static class BossRulesRuntime
         {
             _configuration = BossRuleConfigurationState.Empty;
             _runtimeState = RuntimeState.Empty;
+            _runtimeStateReady = false;
             _runtimeGameDataSignature = -1;
             _runtimeConfigurationVersion = -1;
             _configurationVersion++;
@@ -102,13 +105,13 @@ internal static class BossRulesRuntime
     internal static bool IsDespawnTrackingRuleLookupReady()
     {
         EnsureRuntimeState();
-        return _runtimeGameDataSignature >= 0;
+        return _runtimeStateReady;
     }
 
     internal static bool TryGetCachedDespawnTrackingPrefabHashEligibility(int prefabHash, out bool eligible)
     {
         eligible = false;
-        if (prefabHash == 0 || _runtimeGameDataSignature < 0)
+        if (prefabHash == 0 || !_runtimeStateReady)
         {
             return false;
         }
@@ -338,15 +341,18 @@ internal static class BossRulesRuntime
     private static void EnsureRuntimeState()
     {
         int gameDataSignature = GetGameDataSignature();
-        if (_runtimeGameDataSignature == gameDataSignature &&
+        if (_runtimeStateReady &&
+            _runtimeGameDataSignature == gameDataSignature &&
             _runtimeConfigurationVersion == _configurationVersion)
         {
             return;
         }
 
+        _runtimeStateReady = false;
         _runtimeState = BuildRuntimeState(_configuration);
         _runtimeGameDataSignature = gameDataSignature;
         _runtimeConfigurationVersion = _configurationVersion;
+        _runtimeStateReady = true;
         _despawnLookupVersion++;
     }
 

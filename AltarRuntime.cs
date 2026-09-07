@@ -335,13 +335,21 @@ internal static partial class AltarRuntime
                 return;
             }
 
-            if (!AltarItemStandHoverInfoFormatter.TryResolveOfferingBowlContext(offeringBowl, out string prefabName, out Transform root))
+            if (!AltarLocationResolver.TryResolveOfferingBowlContext(offeringBowl, out string prefabName, out Transform root))
             {
-                BossRulesDebugLog.Client($"Altar loose offering bowl skipped: context unresolved bowl={offeringBowl.name}.");
+                if (BossRulesDebugLog.IsClientEnabled)
+                {
+                    BossRulesDebugLog.Client($"Altar loose offering bowl skipped: context unresolved bowl={offeringBowl.name}.");
+                }
+
                 return;
             }
 
-            BossRulesDebugLog.Client($"Altar loose offering bowl context prefab={prefabName} root={root.name} bowl={offeringBowl.name}.");
+            if (BossRulesDebugLog.IsClientEnabled)
+            {
+                BossRulesDebugLog.Client($"Altar loose offering bowl context prefab={prefabName} root={root.name} bowl={offeringBowl.name}.");
+            }
+
             if (IsOfferingBowlReconcileCurrent(offeringBowl, root, prefabName))
             {
                 return;
@@ -436,92 +444,6 @@ internal static partial class AltarRuntime
         }
     }
 
-    internal static void BeginOfferingBowlBossSpawnAttempt(OfferingBowl? offeringBowl, Vector3 spawnPoint)
-    {
-        if (ZNet.instance == null || offeringBowl?.m_bossPrefab == null)
-        {
-            return;
-        }
-
-        lock (Sync)
-        {
-            string refundPayload = ConsumePreparedOfferingRefundPayload(offeringBowl);
-            QueueOfferingBowlBossSpawnAttemptLocked(offeringBowl, spawnPoint, refundPayload, 0f, "started");
-        }
-    }
-
-    internal static void PrepareOfferingBowlRefundPayload(OfferingBowl? offeringBowl)
-    {
-        if (ZNet.instance == null || offeringBowl == null)
-        {
-            return;
-        }
-
-        lock (Sync)
-        {
-            string refundPayload = BuildOfferingRefundPayload(offeringBowl);
-            OfferingBowlRuntimeState state = GetOrAddOfferingBowlRuntimeState(offeringBowl);
-            state.PendingRefundPayload = refundPayload;
-            BossRulesDebugLog.Client(
-                $"Altar refund prepared altar='{offeringBowl.name}' useItemStands={offeringBowl.m_useItemStands} payload='{FormatRefundPayloadForLog(refundPayload)}'.");
-        }
-    }
-
-    internal static void PrepareAndQueueOfferingBowlRefundPayload(OfferingBowl? offeringBowl, Vector3 spawnPoint)
-    {
-        if (ZNet.instance == null || offeringBowl?.m_bossPrefab == null)
-        {
-            return;
-        }
-
-        lock (Sync)
-        {
-            string refundPayload = BuildOfferingRefundPayload(offeringBowl);
-            OfferingBowlRuntimeState state = GetOrAddOfferingBowlRuntimeState(offeringBowl);
-            state.PendingRefundPayload = refundPayload;
-            BossRulesDebugLog.Client(
-                $"Altar refund prepared altar='{offeringBowl.name}' useItemStands={offeringBowl.m_useItemStands} payload='{FormatRefundPayloadForLog(refundPayload)}'.");
-            QueueOfferingBowlBossSpawnAttemptLocked(
-                offeringBowl,
-                spawnPoint,
-                refundPayload,
-                Math.Max(0f, offeringBowl.m_spawnBossDelay),
-                "queued");
-        }
-    }
-
-    internal static void FinalizeOfferingBowlBossSpawnAttempt()
-    {
-        if (ZNet.instance == null)
-        {
-            return;
-        }
-
-        lock (Sync)
-        {
-            TryMarkNearbyPendingAltarSummonsLocked();
-        }
-    }
-
-    internal static void TryMarkAltarSummonedCharacter(Character? character)
-    {
-        if (ZNet.instance == null || character?.gameObject == null)
-        {
-            return;
-        }
-
-        ZNetView? nview = character.GetComponent<ZNetView>();
-        if (nview == null || !nview.IsValid())
-        {
-            return;
-        }
-
-        lock (Sync)
-        {
-            TryMarkAltarSummonedCharacterLocked(character, nview.GetZDO());
-        }
-    }
-
     internal static string GetPrefabName(GameObject? gameObject)
     {
         if (gameObject == null)
@@ -599,7 +521,7 @@ internal static partial class AltarRuntime
                 continue;
             }
 
-            if (AltarItemStandHoverInfoFormatter.TryResolveOfferingBowlContext(offeringBowl, out string prefabName, out Transform root))
+            if (AltarLocationResolver.TryResolveOfferingBowlContext(offeringBowl, out string prefabName, out Transform root))
             {
                 applied++;
                 ReconcileRootLocked(root, prefabName);
@@ -663,7 +585,7 @@ internal static partial class AltarRuntime
             return true;
         }
 
-        if (AltarItemStandHoverInfoFormatter.TryResolveOfferingBowlContext(offeringBowl, out string loosePrefabName, out Transform root))
+        if (AltarLocationResolver.TryResolveOfferingBowlContext(offeringBowl, out string loosePrefabName, out Transform root))
         {
             BossRulesDebugLog.Client($"Altar loose itemStand reapplying loose root prefab={loosePrefabName} stand={itemStand.name} bowl={offeringBowl.name}.");
             ReconcileRootLocked(root, loosePrefabName);
@@ -1203,12 +1125,10 @@ internal static partial class AltarRuntime
             return authoredPathsByItemStand;
         }
 
-        HashSet<int> assignedItemStandIds = new();
-        HashSet<string> assignedPaths = new(StringComparer.Ordinal);
         List<(float Distance, ItemStand ItemStand, AuthoredItemStandSlotTemplate Template)> candidates = new();
         foreach (ItemStand itemStand in relevantItemStands)
         {
-            if (itemStand == null || assignedItemStandIds.Contains(itemStand.GetInstanceID()))
+            if (itemStand == null)
             {
                 continue;
             }
@@ -1216,11 +1136,6 @@ internal static partial class AltarRuntime
             Vector3 itemStandOffset = offeringBowl.transform.InverseTransformPoint(itemStand.transform.position);
             foreach (AuthoredItemStandSlotTemplate template in templates)
             {
-                if (assignedPaths.Contains(template.Path))
-                {
-                    continue;
-                }
-
                 float distance = Vector3.SqrMagnitude(itemStandOffset - template.OfferingBowlLocalOffset);
                 candidates.Add((distance, itemStand, template));
             }
@@ -1229,6 +1144,8 @@ internal static partial class AltarRuntime
         BossRulesDebugLog.Client(
             $"Altar authored path remap candidates prefab={normalizedPrefab} templates={templates.Count} relevant={relevantItemStands.Count} candidates={candidates.Count}.");
         candidates.Sort((left, right) => left.Distance.CompareTo(right.Distance));
+        HashSet<int> assignedItemStandIds = new();
+        HashSet<string> assignedPaths = new(StringComparer.Ordinal);
         foreach ((float _, ItemStand itemStand, AuthoredItemStandSlotTemplate template) in candidates)
         {
             int itemStandId = itemStand.GetInstanceID();

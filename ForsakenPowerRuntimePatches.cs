@@ -1,3 +1,4 @@
+using System;
 using HarmonyLib;
 
 namespace BossRules;
@@ -5,20 +6,34 @@ namespace BossRules;
 [HarmonyPatch(typeof(Player), nameof(Player.ActivateGuardianPower))]
 internal static class PlayerActivateGuardianPowerForsakenPowerPatch
 {
-    private static void Prefix(Player __instance, out float __state)
+    private static void Prefix(Player __instance, out float? __state)
     {
-        if (!ForsakenPowerRuntime.TryOverrideGuardianPowerAdrenalineGain(__instance, out __state))
+        __state = null;
+        if (ForsakenPowerRuntime.TryOverrideGuardianPowerAdrenalineGain(__instance, out float originalValue) &&
+            !float.IsNaN(originalValue))
         {
-            __state = float.NaN;
+            __state = originalValue;
         }
     }
 
-    private static void Postfix(Player __instance, float __state)
+    private static void Postfix(Player __instance, ref float? __state)
     {
-        if (!float.IsNaN(__state))
+        if (__state.HasValue)
         {
-            __instance.m_adrenalineGuardianPower = __state;
+            __instance.m_adrenalineGuardianPower = __state.Value;
+            __state = null;
         }
+    }
+
+    private static Exception? Finalizer(Player __instance, ref float? __state, Exception? __exception)
+    {
+        if (__state.HasValue)
+        {
+            __instance.m_adrenalineGuardianPower = __state.Value;
+            __state = null;
+        }
+
+        return __exception;
     }
 }
 

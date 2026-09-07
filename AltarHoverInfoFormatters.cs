@@ -369,7 +369,7 @@ internal static class AltarItemStandHoverInfoFormatter
             return FindNearestRelevantOfferingBowl(itemStand, location.GetComponentsInChildren<OfferingBowl>(true));
         }
 
-        if (TryGetDetachedStructureRoot(itemStand.transform, out Transform? detachedRoot) && detachedRoot != null)
+        if (AltarLocationResolver.TryGetDetachedStructureRoot(itemStand.transform, out Transform? detachedRoot) && detachedRoot != null)
         {
             OfferingBowl? detachedOfferingBowl = FindNearestRelevantOfferingBowl(itemStand, detachedRoot.GetComponentsInChildren<OfferingBowl>(true));
             if (detachedOfferingBowl != null)
@@ -379,40 +379,6 @@ internal static class AltarItemStandHoverInfoFormatter
         }
 
         return FindNearestRelevantOfferingBowl(itemStand, OfferingBowlHoverInfoFormatter.GetKnownOfferingBowls());
-    }
-
-    internal static bool TryResolveOfferingBowlContext(OfferingBowl? offeringBowl, out string locationPrefab, out Transform root)
-    {
-        locationPrefab = "";
-        root = null!;
-        if (offeringBowl == null)
-        {
-            return false;
-        }
-
-        root = offeringBowl.transform;
-        Location? location = offeringBowl.GetComponentInParent<Location>(true);
-        if (location != null)
-        {
-            root = location.transform;
-        }
-        else if (TryGetDetachedStructureRoot(offeringBowl.transform, out Transform? detachedRoot) && detachedRoot != null)
-        {
-            root = detachedRoot;
-        }
-
-        if (AltarLocationResolver.TryResolveLocationPrefabName(location, out locationPrefab))
-        {
-            return locationPrefab.Length > 0;
-        }
-
-        if (AltarLocationResolver.TryResolveZoneLocationPrefabName(offeringBowl.transform.position, out locationPrefab))
-        {
-            return true;
-        }
-
-        LocationProxy? proxy = offeringBowl.GetComponentInParent<LocationProxy>(true);
-        return proxy != null && AltarLocationResolver.TryResolveLocationProxyPrefabName(proxy, out locationPrefab);
     }
 
     internal static bool IsRelevantToOfferingBowl(ItemStand? itemStand, OfferingBowl? offeringBowl)
@@ -428,32 +394,6 @@ internal static class AltarItemStandHoverInfoFormatter
         }
 
         return itemStand.gameObject.name.StartsWith(offeringBowl.m_itemStandPrefix ?? "", StringComparison.OrdinalIgnoreCase);
-    }
-
-    internal static bool TryGetDetachedStructureRoot(Transform transform, out Transform? root)
-    {
-        if (transform == null)
-        {
-            root = null;
-            return false;
-        }
-
-        Transform current = transform;
-        while (current.parent != null)
-        {
-            Transform parent = current.parent;
-            if (parent.GetComponent<Location>() != null ||
-                parent.GetComponent<LocationProxy>() != null ||
-                string.Equals(parent.name, "_ZoneCtrl(Clone)", StringComparison.Ordinal))
-            {
-                break;
-            }
-
-            current = parent;
-        }
-
-        root = current;
-        return root != null;
     }
 
     private static string BuildInfo(ItemStand itemStand)
@@ -529,7 +469,7 @@ internal static class AltarItemStandHoverInfoFormatter
     private static bool TryGetOfferingBowlStructuralRoot(OfferingBowl offeringBowl, out Transform? root)
     {
         root = offeringBowl.GetComponentInParent<Location>(true)?.transform;
-        return root != null || TryGetDetachedStructureRoot(offeringBowl.transform, out root);
+        return root != null || AltarLocationResolver.TryGetDetachedStructureRoot(offeringBowl.transform, out root);
     }
 
     private static int GetDisplayPriority(ItemStand itemStand)

@@ -43,7 +43,7 @@ internal static class BossTamedPressureRuntime
         public double NextDamageAt { get; set; }
         public int CachedBossPrefabHashSignature { get; set; } = -1;
         public List<int> CachedBossPrefabHashes { get; } = new();
-        public Dictionary<ZDOID, TrackedTarget> Targets { get; } = new();
+        public Dictionary<ZDOID, double> Targets { get; } = new();
         public Dictionary<long, double> NextMessageByPlayer { get; } = new();
     }
 
@@ -73,25 +73,16 @@ internal static class BossTamedPressureRuntime
 
     private readonly struct TargetCandidate
     {
-        internal TargetCandidate(ZDO zdo, Vector3 position, float distanceSqr, int order)
+        internal TargetCandidate(ZDO zdo, float distanceSqr, int order)
         {
             Zdo = zdo;
-            Position = position;
             DistanceSqr = distanceSqr;
             Order = order;
         }
 
         internal ZDO Zdo { get; }
-        internal Vector3 Position { get; }
         internal float DistanceSqr { get; }
         internal int Order { get; }
-    }
-
-    private sealed class TrackedTarget
-    {
-        public int PrefabHash { get; set; }
-        public Vector3 LastKnownPosition { get; set; }
-        public double ExpiresAt { get; set; }
     }
 
     internal static void Configure(BossTamedPressureDefinition? definition)
@@ -246,7 +237,7 @@ internal static class BossTamedPressureRuntime
                     continue;
                 }
 
-                if (TrackTarget(rule, candidate.Zdo, candidate.Position, now))
+                if (TrackTarget(rule, candidate.Zdo, now))
                 {
                     appliedCount++;
                 }
@@ -335,7 +326,7 @@ internal static class BossTamedPressureRuntime
                 continue;
             }
 
-            nearbyTargets.Add(new TargetCandidate(candidate, position, distanceSqr, order++));
+            nearbyTargets.Add(new TargetCandidate(candidate, distanceSqr, order++));
         }
 
         sectorObjects.Clear();
@@ -344,7 +335,6 @@ internal static class BossTamedPressureRuntime
     private static bool TrackTarget(
         Rule rule,
         ZDO zdo,
-        Vector3 position,
         double now)
     {
         if (zdo == null || !zdo.IsValid())
@@ -353,14 +343,8 @@ internal static class BossTamedPressureRuntime
         }
 
         ZDOID targetId = zdo.m_uid;
-        int prefabHash = zdo.GetPrefab();
         double expiresAt = now + ScanInterval + 0.5d;
-        rule.Targets[targetId] = new TrackedTarget
-        {
-            PrefabHash = prefabHash,
-            LastKnownPosition = position,
-            ExpiresAt = expiresAt
-        };
+        rule.Targets[targetId] = expiresAt;
 
         float existingUntil = zdo.GetFloat(ActiveUntilKey, 0f);
         float newUntil = (float)Math.Max(existingUntil, expiresAt);
@@ -386,7 +370,7 @@ internal static class BossTamedPressureRuntime
         CopyTargetIds(rule, TargetIdBuffer);
         foreach (ZDOID targetId in TargetIdBuffer)
         {
-            if (!rule.Targets.TryGetValue(targetId, out TrackedTarget? target) || target.ExpiresAt < now)
+            if (!rule.Targets.TryGetValue(targetId, out double expiresAt) || expiresAt < now)
             {
                 rule.Targets.Remove(targetId);
                 continue;
@@ -399,9 +383,9 @@ internal static class BossTamedPressureRuntime
                 continue;
             }
 
-            target.PrefabHash = zdo.GetPrefab();
-            target.LastKnownPosition = zdo.GetPosition();
-            float baseHealth = GetMaxHealth(zdo, target.PrefabHash, catalog);
+            int prefabHash = zdo.GetPrefab();
+            Vector3 position = zdo.GetPosition();
+            float baseHealth = GetMaxHealth(zdo, prefabHash, catalog);
             float damage = baseHealth * rule.PercentMaxHealthPerSecond * DamageInterval;
             if (damage <= 0f)
             {
@@ -411,11 +395,11 @@ internal static class BossTamedPressureRuntime
             HitData hit = new()
             {
                 m_hitType = HitData.HitType.Undefined,
-                m_point = target.LastKnownPosition
+                m_point = position
             };
             hit.m_damage.m_damage = damage;
             ZRoutedRpc.instance?.InvokeRoutedRPC(zdo.GetOwner(), zdo.m_uid, "RPC_Damage", hit);
-            TrySendMessage(rule, target.LastKnownPosition, now);
+            TrySendMessage(rule, position, now);
         }
 
         TargetIdBuffer.Clear();
@@ -426,7 +410,7 @@ internal static class BossTamedPressureRuntime
         CopyTargetIds(rule, TargetIdBuffer);
         foreach (ZDOID targetId in TargetIdBuffer)
         {
-            if (!rule.Targets.TryGetValue(targetId, out TrackedTarget? target) || target.ExpiresAt < now)
+            if (!rule.Targets.TryGetValue(targetId, out double expiresAt) || expiresAt < now)
             {
                 rule.Targets.Remove(targetId);
             }
