@@ -1,9 +1,9 @@
 {
   "name": "BossRules",
-  "version_number": "1.0.7",
+  "version_number": "1.0.8",
   "website_url": "https://discord.gg/jkcJCq2sK5",
   "description": "Forsaken powers overhaul, despawn abandoned bosses with offering refunds, hover an altar to see the offering and boss, rotate Forsaken Powers remotely, block duplicate summons, personalize boss stones, and pressure tames near bosses.",
   "dependencies": [
-    "denikson-BepInExPack_Valheim-5.4.2333"
+    "denikson-BepInExPack_Valheim-5.4.2350"
   ]
 }

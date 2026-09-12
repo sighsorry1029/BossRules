@@ -20,7 +20,7 @@ internal static class PlayerActivateGuardianPowerForsakenPowerPatch
     {
         if (__state.HasValue)
         {
-            __instance.m_adrenalineGuardianPower = __state.Value;
+            ForsakenPowerRuntime.GuardianPowerAdrenalineRef(__instance) = __state.Value;
             __state = null;
         }
     }
@@ -29,7 +29,7 @@ internal static class PlayerActivateGuardianPowerForsakenPowerPatch
     {
         if (__state.HasValue)
         {
-            __instance.m_adrenalineGuardianPower = __state.Value;
+            ForsakenPowerRuntime.GuardianPowerAdrenalineRef(__instance) = __state.Value;
             __state = null;
         }
 

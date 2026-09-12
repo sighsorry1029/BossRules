@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using HarmonyLib;
 using UnityEngine;
 
 namespace BossRules;
 
 internal static class BossTamedPressureRuntime
 {
+    private static readonly AccessTools.FieldRef<Character, ZNetView> CharacterNviewRef =
+        AccessTools.FieldRefAccess<Character, ZNetView>("m_nview");
     private const float DefaultRange = 24f;
     private const float ScanInterval = 5f;
     private const float DamageInterval = 1f;
@@ -307,7 +310,9 @@ internal static class BossTamedPressureRuntime
         }
 
         int sectorRange = Mathf.Max(0, Mathf.CeilToInt(rule.Range / ZoneSystem.c_ZoneSize) + 1);
-        ZDOMan.instance.FindSectorObjects(ZoneSystem.GetZone(boss.Position), sectorRange, 0, sectorObjects);
+        // Classic mode retains the previous square sector coverage; the distance filter below is unchanged.
+        ZDOMan.instance.FindSectorObjects(ZoneSystem.GetZone(boss.Position),
+            new SimulationDistance(sectorRange, 0, classic: true), sectorObjects);
 
         int order = 0;
         foreach (ZDO candidate in sectorObjects)
@@ -587,7 +592,7 @@ internal static class BossTamedPressureRuntime
 
     private static bool TryGetCharacterZdo(Character character, out ZDO? zdo)
     {
-        zdo = character?.m_nview?.GetZDO();
+        zdo = character != null ? CharacterNviewRef(character)?.GetZDO() : null;
         return zdo != null;
     }
 

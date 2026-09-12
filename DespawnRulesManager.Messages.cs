@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using HarmonyLib;
 using UnityEngine;
 
 namespace BossRules;
 
 internal static partial class DespawnRulesManager
 {
+    private static readonly Func<ZRoutedRpc, long> GetServerPeerId =
+        AccessTools.MethodDelegate<Func<ZRoutedRpc, long>>(AccessTools.Method(typeof(ZRoutedRpc), "GetServerPeerID", Type.EmptyTypes));
     private const string DespawnMessageRpc =
         "sighsorry.BossRules Despawn Message";
     private const int MaximumDespawnMessageNameLength = 256;
@@ -239,7 +242,7 @@ internal static partial class DespawnRulesManager
     {
         ZRoutedRpc? rpc = ZRoutedRpc.instance;
         if (rpc == null ||
-            sender != rpc.GetServerPeerID() ||
+            sender != GetServerPeerId(rpc) ||
             nameLocalizationKey == null ||
             prefabName == null ||
             nameLocalizationKey.Length > MaximumDespawnMessageNameLength ||

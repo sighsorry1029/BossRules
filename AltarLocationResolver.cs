@@ -158,7 +158,7 @@ internal static class AltarLocationResolver
             return false;
         }
 
-        Vector2i zone = ZoneSystem.GetZone(position);
+        Vector2s zone = ZoneSystem.GetZone(position);
         if (!ZoneSystem.instance.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance locationInstance))
         {
             return false;
@@ -181,7 +181,7 @@ internal static class AltarLocationResolver
         string zonePrefabName = "";
         if (ZoneSystem.instance != null)
         {
-            Vector2i zone = ZoneSystem.GetZone(location.transform.position);
+            Vector2s zone = ZoneSystem.GetZone(location.transform.position);
             if (ZoneSystem.instance.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance locationInstance))
             {
                 zonePrefabName = GetZoneLocationPrefabName(locationInstance.m_location);

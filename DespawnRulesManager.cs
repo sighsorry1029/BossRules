@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HarmonyLib;
 using UnityEngine;
 
 namespace BossRules;
@@ -24,6 +25,8 @@ internal sealed class DespawnRefundDrop
 /// </summary>
 internal static partial class DespawnRulesManager
 {
+    private static readonly AccessTools.FieldRef<ZDOMan, Dictionary<ZDOID, long>> DeadZdosRef =
+        AccessTools.FieldRefAccess<ZDOMan, Dictionary<ZDOID, long>>("m_deadZDOs");
     private const float DespawnCountdownCheckIntervalSeconds = 0.5f;
     private const float DespawnIdleCheckIntervalSeconds = 1f;
     private const float DespawnTrackingRefreshIntervalSeconds = 1f;
@@ -364,7 +367,7 @@ internal static partial class DespawnRulesManager
                 $"Despawn executing prefab={state.PrefabName} zdo={zdoId} refunds={BossRulesDebugLog.FormatRefunds(refunds)} position={BossRulesDebugLog.FormatVector3(probePoint)}.");
             DespawnRefundExecutor.ExecuteRefunds(probePoint, refunds);
             ApplyDespawnCleanupBeforeDestroy(zdo);
-            zdo.SetOwner(ZDOMan.instance.m_sessionID);
+            zdo.SetOwner(ZDOMan.GetSessionID());
             ZDOMan.instance.DestroyZDO(zdo);
             PendingDespawnRemovals.Add(zdoId);
             return;
@@ -558,9 +561,8 @@ internal static partial class DespawnRulesManager
 
     private static Character? TryGetLoadedTrackedCharacter(ZDO zdo)
     {
-        if (ZNetScene.instance == null ||
-            !ZNetScene.instance.m_instances.TryGetValue(zdo, out ZNetView nview) ||
-            nview == null ||
+        ZNetView? nview = ZNetScene.instance?.FindInstance(zdo);
+        if (nview == null ||
             nview.gameObject == null)
         {
             return null;
@@ -571,7 +573,7 @@ internal static partial class DespawnRulesManager
 
     private static bool IsDeadZdo(ZDOID zdoId)
     {
-        return ZDOMan.instance != null && ZDOMan.instance.m_deadZDOs.ContainsKey(zdoId);
+        return ZDOMan.instance != null && DeadZdosRef(ZDOMan.instance).ContainsKey(zdoId);
     }
 
     private static int GetRemainingSeconds(float despawnDelaySeconds, double elapsedSeconds)

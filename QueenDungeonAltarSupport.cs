@@ -184,7 +184,7 @@ internal static class QueenDungeonAltarSupport
         out string locationPrefab)
     {
         locationPrefab = "";
-        Vector2i targetZone = ZoneSystem.GetZone(position);
+        Vector2s targetZone = ZoneSystem.GetZone(position);
         float nearestHorizontalDistance = float.MaxValue;
         foreach (LocationProxy proxy in UnityEngine.Object.FindObjectsByType<LocationProxy>(
                      FindObjectsSortMode.None))

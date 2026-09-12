@@ -38,7 +38,7 @@ internal static class BossRulesLocalization
         string normalizedKey = NormalizeKey(key);
         Localization? localization = Localization.instance;
         if (localization != null &&
-            localization.m_translations.TryGetValue(
+            Localizer.TranslationsRef(localization).TryGetValue(
                 normalizedKey,
                 out string currentText) &&
             !string.IsNullOrWhiteSpace(currentText))
@@ -98,7 +98,7 @@ internal static class BossRulesLocalization
         {
             Localization? localization = Localization.instance;
             if (localization != null &&
-                localization.m_translations.TryGetValue(
+                Localizer.TranslationsRef(localization).TryGetValue(
                     normalizedKey,
                     out string currentText) &&
                 IsUsableTranslation(currentText, normalizedKey))

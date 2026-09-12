@@ -15,7 +15,7 @@ namespace BossRules;
 public sealed class BossRulesPlugin : BaseUnityPlugin
 {
     internal const string ModName = "BossRules";
-    internal const string ModVersion = "1.0.7";
+    internal const string ModVersion = "1.0.8";
     internal const string Author = "sighsorry";
     internal const string ModGUID = $"{Author}.{ModName}";
     internal const string AltarYamlFileName = $"{ModName}.altar.yml";
@@ -112,9 +112,18 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
             ConfigSync.SourceOfTruthChanged -= HandleSourceOfTruthChanged;
         }
 
-        _syncedAltarYaml.ValueChanged -= HandleSyncedAltarYamlChanged;
-        _syncedRulesYaml.ValueChanged -= HandleSyncedRulesYamlChanged;
-        _syncedForsakenPowersYaml.ValueChanged -= HandleSyncedForsakenPowersYamlChanged;
+        if (_syncedAltarYaml != null)
+        {
+            _syncedAltarYaml.ValueChanged -= HandleSyncedAltarYamlChanged;
+        }
+        if (_syncedRulesYaml != null)
+        {
+            _syncedRulesYaml.ValueChanged -= HandleSyncedRulesYamlChanged;
+        }
+        if (_syncedForsakenPowersYaml != null)
+        {
+            _syncedForsakenPowersYaml.ValueChanged -= HandleSyncedForsakenPowersYamlChanged;
+        }
         _watcher?.Dispose();
         _watcher = null;
         Interlocked.Exchange(ref _altarYamlReloadRequested, 0);

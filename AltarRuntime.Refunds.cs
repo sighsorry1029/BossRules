@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HarmonyLib;
 using System.Globalization;
 using System.Linq;
 using UnityEngine;
@@ -8,6 +9,8 @@ namespace BossRules;
 
 internal static partial class AltarRuntime
 {
+    private static readonly AccessTools.FieldRef<ZNetScene, Dictionary<ZDO, ZNetView>> SceneInstancesRef =
+        AccessTools.FieldRefAccess<ZNetScene, Dictionary<ZDO, ZNetView>>("m_instances");
     private static readonly int AltarSummonKey = $"{BossRulesPlugin.ModName}.altar_summon".GetStableHashCode();
     private static readonly int AltarRefundsKey = $"{BossRulesPlugin.ModName}.altar_refunds".GetStableHashCode();
     private static readonly int AltarRefundPointKey = $"{BossRulesPlugin.ModName}.altar_refund_point".GetStableHashCode();
@@ -201,7 +204,7 @@ internal static partial class AltarRuntime
 
     private static bool TryMarkNearbyPendingAltarSummonLocked(PendingAltarBossSpawn pending)
     {
-        foreach (KeyValuePair<ZDO, ZNetView> pair in ZNetScene.instance.m_instances)
+        foreach (KeyValuePair<ZDO, ZNetView> pair in SceneInstancesRef(ZNetScene.instance))
         {
             ZDO zdo = pair.Key;
             ZNetView nview = pair.Value;
@@ -546,7 +549,16 @@ internal static partial class AltarRuntime
             return false;
         }
 
-        itemName = (zdo.GetString(ZDOVars.s_item, "") ?? "").Trim();
+        // Valheim 1.0 stores the attachment as a prefab hash. Keep our refund payload name-based.
+        int itemHash = zdo.GetInt(ZDOVars.s_item, 0);
+        if (itemHash == 0)
+        {
+            return false;
+        }
+
+        GameObject? prefab = ObjectDB.instance?.GetItemPrefab(itemHash)
+            ?? ZNetScene.instance?.GetPrefab(itemHash);
+        itemName = NormalizeReferencePrefabName(prefab) ?? "";
         return itemName.Length > 0;
     }
 

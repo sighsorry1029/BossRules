@@ -15,14 +15,15 @@ internal static class ZoneSystemAwakeAltarReferencePatch
     }
 }
 
-[HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.SpawnLocation), new Type[]
+[HarmonyPatch(typeof(ZoneSystem), "SpawnLocation", new Type[]
 {
     typeof(ZoneSystem.ZoneLocation),
     typeof(int),
     typeof(Vector3),
     typeof(Quaternion),
     typeof(ZoneSystem.SpawnMode),
-    typeof(List<GameObject>)
+    typeof(List<GameObject>),
+    typeof(bool)
 })]
 [HarmonyAfter("expand_world_data")]
 internal static class ZoneSystemSpawnLocationAltarPatch
@@ -72,7 +73,7 @@ internal static class ZoneSystemSpawnLocationAltarPatch
     }
 }
 
-[HarmonyPatch(typeof(ZNetView), nameof(ZNetView.Awake))]
+[HarmonyPatch(typeof(ZNetView), "Awake")]
 internal static class QueenDungeonGeneratorZNetViewAwakeAltarPatch
 {
     private static void Postfix(ZNetView __instance)
@@ -147,7 +148,7 @@ internal static class DungeonGeneratorPlaceQueenRoomAltarPatch
     }
 }
 
-[HarmonyPatch(typeof(Location), nameof(Location.Awake))]
+[HarmonyPatch(typeof(Location), "Awake")]
 internal static class LocationAwakeAltarPatch
 {
     private static void Postfix(Location __instance)
@@ -189,7 +190,7 @@ internal static class LocationProxySpawnLocationAltarPatch
     }
 }
 
-[HarmonyPatch(typeof(OfferingBowl), nameof(OfferingBowl.Awake))]
+[HarmonyPatch(typeof(OfferingBowl), "Awake")]
 internal static class OfferingBowlAwakeAltarPatch
 {
     private static void Postfix(OfferingBowl __instance)
@@ -339,7 +340,7 @@ internal static class OfferingBowlSpawnItemAltarPatch
     }
 }
 
-[HarmonyPatch(typeof(ItemStand), nameof(ItemStand.Awake))]
+[HarmonyPatch(typeof(ItemStand), "Awake")]
 internal static class ItemStandAwakeAltarPatch
 {
     private static void Postfix(ItemStand __instance)
@@ -381,7 +382,7 @@ internal static class ItemStandUseItemAltarPatch
     }
 }
 
-[HarmonyPatch(typeof(Character), nameof(Character.Awake))]
+[HarmonyPatch(typeof(Character), "Awake")]
 internal static class CharacterAwakeBossRulesPatch
 {
     private static void Postfix(Character __instance)

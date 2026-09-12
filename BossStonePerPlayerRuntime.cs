@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
 
@@ -70,11 +69,13 @@ internal static class BossStonePerPlayerRuntime
     private static readonly AccessTools.FieldRef<ZRoutedRpc, long> RoutedRpcIdRef =
         AccessTools.FieldRefAccess<ZRoutedRpc, long>("m_id");
 
-    private static readonly MethodInfo? ItemStandGetOrientationMethod =
-        AccessTools.Method(typeof(ItemStand), "GetOrientation");
+    private static readonly Func<ItemStand, int> ItemStandGetOrientation =
+        AccessTools.MethodDelegate<Func<ItemStand, int>>(AccessTools.Method(typeof(ItemStand), "GetOrientation", Type.EmptyTypes));
 
-    private static readonly MethodInfo? ItemStandSetVisualItemMethod =
-        AccessTools.Method(typeof(ItemStand), "SetVisualItem", new[] { typeof(string), typeof(int), typeof(int), typeof(int) });
+    private static readonly Action<ItemStand, int, int, int, int> ItemStandSetVisualItem =
+        AccessTools.MethodDelegate<Action<ItemStand, int, int, int, int>>(AccessTools.Method(typeof(ItemStand), "SetVisualItem", new[] { typeof(int), typeof(int), typeof(int), typeof(int) }));
+    private static readonly Func<ItemStand, ItemDrop.ItemData, bool> ItemStandCanAttach =
+        AccessTools.MethodDelegate<Func<ItemStand, ItemDrop.ItemData, bool>>(AccessTools.Method(typeof(ItemStand), "CanAttach", new[] { typeof(ItemDrop.ItemData) }));
 
     private static ZRoutedRpc? _registeredRpcInstance;
     private static readonly Dictionary<(long Sender, long RequestId), PendingBossStoneSacrificeRequest> PendingBossStoneSacrificeRequests = new();
@@ -335,7 +336,7 @@ internal static class BossStonePerPlayerRuntime
             return false;
         }
 
-        if (!itemStand.CanAttach(item))
+        if (!ItemStandCanAttach(itemStand, item))
         {
             return false;
         }
@@ -1074,13 +1075,12 @@ internal static class BossStonePerPlayerRuntime
 
     private static int GetOrientation(ItemStand itemStand)
     {
-        object? orientation = ItemStandGetOrientationMethod?.Invoke(itemStand, null);
-        return orientation is int value ? value : 0;
+        return ItemStandGetOrientation(itemStand);
     }
 
     private static void SetVisualItem(ItemStand itemStand, string itemName, int variant, int quality, int orientation)
     {
-        ItemStandSetVisualItemMethod?.Invoke(itemStand, new object[] { itemName, variant, quality, orientation });
+        ItemStandSetVisualItem(itemStand, itemName.Length == 0 ? 0 : itemName.GetStableHashCode(), variant, quality, orientation);
     }
 
     private static void RefreshAllBossStoneVisuals()

@@ -15,6 +15,7 @@
         <LangVersion>preview</LangVersion>
         <Nullable>enable</Nullable>
         <ILRepackTargetsFile>$(MSBuildProjectDirectory)\ILRepack.targets</ILRepackTargetsFile>
+        <DeployToGame Condition=" '$(DeployToGame)' == '' ">false</DeployToGame>
     </PropertyGroup>
     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
         <PlatformTarget>AnyCPU</PlatformTarget>
@@ -42,13 +43,13 @@
             <HintPath>$(BepInExPath)\core\0Harmony.dll</HintPath>
         </Reference>
         <Reference Include="assembly_utils">
-            <HintPath>$(PublicizedAssembliesPath)\assembly_utils_publicized.dll</HintPath>
+            <HintPath>$(CorlibPath)\assembly_utils.dll</HintPath>
         </Reference>
         <Reference Include="assembly_guiutils">
-            <HintPath>$(PublicizedAssembliesPath)\assembly_guiutils_publicized.dll</HintPath>
+            <HintPath>$(CorlibPath)\assembly_guiutils.dll</HintPath>
         </Reference>
         <Reference Include="assembly_valheim">
-            <HintPath>$(PublicizedAssembliesPath)\assembly_valheim_publicized.dll</HintPath>
+            <HintPath>$(CorlibPath)\assembly_valheim.dll</HintPath>
         </Reference>
         <Reference Include="BepInEx">
             <HintPath>$(BepInExPath)\core\BepInEx.dll</HintPath>
@@ -144,6 +145,7 @@
         </Content>
         <Content Include="README.md"/>
         <Content Include="THIRD-PARTY-NOTICES.md"/>
+        <Content Include="Libs\ServerSync.LICENSE.txt"/>
         <Content Include="Thunderstore\manifest.json"/>
         <Content Include="Thunderstore\CHANGELOG.md"/>
         <Content Include="Thunderstore\icon.png"/>
@@ -175,8 +177,9 @@
             <PackageDir>$(ProjectDir)obj\$(Configuration)\Thunderstore\$(PackageName)</PackageDir>
         </PropertyGroup>
     </Target>
-    <Target Name="CopyOutputDLL" AfterTargets="GetAssemblyVersion">
-        <Copy SourceFiles="$(TargetDir)$(AssemblyName).dll" DestinationFolder="$(CopyOutputDLLPath)" OverwriteReadOnlyFiles="true" Condition="Exists('$(CopyOutputDLLPath)')"/>
+    <Target Name="CopyOutputDLL" AfterTargets="GetAssemblyVersion" Condition=" '$(DeployToGame)' == 'true' ">
+        <Error Text="CopyOutputDLLPath must be set when DeployToGame is true." Condition=" '$(CopyOutputDLLPath)' == '' "/>
+        <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(CopyOutputDLLPath)" OverwriteReadOnlyFiles="true"/>
     </Target>
     <Target Name="UpdateManifestVersion" AfterTargets="CopyOutputDLL" Condition=" ('$(Configuration)|$(Platform)' == 'Release|AnyCPU') And ('$(OS)' == 'Windows_NT') ">
         <Error Text="manifest.json not found in Thunderstore directory." Condition="!Exists('$(ProjectDir)Thunderstore\manifest.json')"/>
@@ -195,6 +198,7 @@
             <PackageFiles Include="$(TargetDir)$(AssemblyName).dll"/>
             <PackageFiles Include="$(ProjectDir)README.md"/>
             <PackageFiles Include="$(ProjectDir)THIRD-PARTY-NOTICES.md"/>
+            <PackageFiles Include="$(ProjectDir)Libs\ServerSync.LICENSE.txt"/>
             <PackageFiles Include="$(ProjectDir)Thunderstore\CHANGELOG.md"/>
             <PackageFiles Include="$(ProjectDir)Thunderstore\manifest.json"/>
             <PackageFiles Include="$(ProjectDir)Thunderstore\icon.png"/>

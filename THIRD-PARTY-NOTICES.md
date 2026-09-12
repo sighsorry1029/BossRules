@@ -1,5 +1,16 @@
 # Third-Party Notices
 
+## ServerSync
+
+BossRules vendors and internalizes ServerSync `valheim-1.0.7-r1`, based on
+[blaxxun-boop/ServerSync](https://github.com/blaxxun-boop/ServerSync/tree/c57c2aa54e07cdcc7630d6068699ea781622323e)
+commit `c57c2aa54e07cdcc7630d6068699ea781622323e` (MIT-0).
+The fixed DLL SHA-256 is `b4dd786997f4e90d770f09ef3e9d64154754fe7e8edfb4841795751895b35846`.
+It is rebuilt against original Valheim 1.0.7 assemblies, uses the public admin
+check, and preserves post-PeerInfo player/admin list and time message ordering.
+See `Libs/ServerSync.LICENSE.txt` in the repository (`ServerSync.LICENSE.txt`
+in the package). It is not a standalone BepInEx plugin.
+
 ## LocalizationManager
 
 BossRules includes a modified source adaptation of

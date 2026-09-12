@@ -2,12 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using HarmonyLib;
 using UnityEngine;
 
 namespace BossRules;
 
 internal static partial class ForsakenPowerRuntime
 {
+    internal static readonly AccessTools.FieldRef<Player, float> GuardianPowerAdrenalineRef =
+        AccessTools.FieldRefAccess<Player, float>("m_adrenalineGuardianPower");
     private static readonly object Sync = new();
 
     private static IReadOnlyList<ForsakenPowerDefinition>? _definition;
@@ -98,13 +101,13 @@ internal static partial class ForsakenPowerRuntime
 
     internal static bool TryOverrideGuardianPowerAdrenalineGain(Player? player, out float originalValue)
     {
-        originalValue = player?.m_adrenalineGuardianPower ?? 0f;
+        originalValue = player != null ? GuardianPowerAdrenalineRef(player) : 0f;
         if (player == null || !BossRulesConfig.IsForsakenPowerRulesEnabled())
         {
             return false;
         }
 
-        player.m_adrenalineGuardianPower = BossRulesConfig.GetGuardianPowerActivationAdrenaline();
+        GuardianPowerAdrenalineRef(player) = BossRulesConfig.GetGuardianPowerActivationAdrenaline();
         return true;
     }
 

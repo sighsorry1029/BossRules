@@ -14,6 +14,16 @@ namespace BossRules;
 // Source: https://github.com/AzumattDev/LocalizationManager
 internal static class Localizer
 {
+    private static readonly AccessTools.FieldRef<Localization> InstanceRef =
+        AccessTools.StaticFieldRefAccess<Localization>(AccessTools.Field(typeof(Localization), "m_instance"));
+    internal static readonly AccessTools.FieldRef<Localization, Dictionary<string, string>> TranslationsRef =
+        AccessTools.FieldRefAccess<Localization, Dictionary<string, string>>("m_translations");
+    private static readonly AccessTools.FieldRef<Localization, LRUCache<string>> CacheRef =
+        AccessTools.FieldRefAccess<Localization, LRUCache<string>>("m_cache");
+    private static readonly Action<Localization, string, string> AddWord =
+        AccessTools.MethodDelegate<Action<Localization, string, string>>(AccessTools.Method(
+            typeof(Localization), "AddWord", new[] { typeof(string), typeof(string) }));
+    internal static Localization? ExistingLocalization => InstanceRef();
     private const string EnglishLanguage = "English";
     private static readonly string[] FileExtensions = { ".json", ".yml" };
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
@@ -50,10 +60,10 @@ internal static class Localizer
 
     internal static void ProcessDeferredLoad()
     {
-        Localization? localization = Localization.m_instance;
+        Localization? localization = ExistingLocalization;
         if (_plugin == null ||
             localization == null ||
-            localization.m_translations.Count == 0 ||
+            TranslationsRef(localization).Count == 0 ||
             DateTime.UtcNow < _nextDeferredLoadAttemptUtc)
         {
             return;
@@ -129,10 +139,10 @@ internal static class Localizer
 
             foreach (KeyValuePair<string, string> entry in translations)
             {
-                localization.AddWord(entry.Key, entry.Value);
+                AddWord(localization, entry.Key, entry.Value);
             }
 
-            localization.m_cache.EvictAll();
+            CacheRef(localization).EvictAll();
             MarkLanguageApplied(localization, selectedLanguage);
         }
         catch (Exception exception)
@@ -472,7 +482,7 @@ internal static class BossRulesLocalizationSetupLanguagePatch
     [HarmonyPostfix]
     private static void Postfix(Localization __instance, string language)
     {
-        if (ReferenceEquals(__instance, Localization.m_instance))
+        if (ReferenceEquals(__instance, Localizer.ExistingLocalization))
         {
             Localizer.ApplyLanguage(__instance, language);
         }
