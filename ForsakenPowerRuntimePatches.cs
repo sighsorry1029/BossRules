@@ -18,22 +18,22 @@ internal static class PlayerActivateGuardianPowerForsakenPowerPatch
 
     private static void Postfix(Player __instance, ref float? __state)
     {
-        if (__state.HasValue)
-        {
-            ForsakenPowerRuntime.GuardianPowerAdrenalineRef(__instance) = __state.Value;
-            __state = null;
-        }
+        RestoreGuardianPowerAdrenaline(__instance, ref __state);
     }
 
     private static Exception? Finalizer(Player __instance, ref float? __state, Exception? __exception)
     {
-        if (__state.HasValue)
-        {
-            ForsakenPowerRuntime.GuardianPowerAdrenalineRef(__instance) = __state.Value;
-            __state = null;
-        }
-
+        RestoreGuardianPowerAdrenaline(__instance, ref __state);
         return __exception;
+    }
+
+    private static void RestoreGuardianPowerAdrenaline(Player player, ref float? state)
+    {
+        if (state.HasValue)
+        {
+            ForsakenPowerRuntime.GuardianPowerAdrenalineRef(player) = state.Value;
+            state = null;
+        }
     }
 }
 
