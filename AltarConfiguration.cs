@@ -26,57 +26,60 @@ internal sealed class AltarConfigurationEntry
 internal sealed class AltarOfferingBowlDefinition
 {
     [YamlMember(Order = 1)]
-    public string? BossItem { get; set; }
+    public string? Path { get; set; }
 
     [YamlMember(Order = 2)]
-    public int? BossItems { get; set; }
+    public string? BossItem { get; set; }
 
     [YamlMember(Order = 3)]
-    public string? BossPrefab { get; set; }
+    public int? BossItems { get; set; }
 
     [YamlMember(Order = 4)]
-    public string? ItemPrefab { get; set; }
+    public string? BossPrefab { get; set; }
 
     [YamlMember(Order = 5)]
-    public string? SetGlobalKey { get; set; }
+    public string? ItemPrefab { get; set; }
 
     [YamlMember(Order = 6)]
-    public bool? RenderSpawnAreaGizmos { get; set; }
+    public string? SetGlobalKey { get; set; }
 
     [YamlMember(Order = 7)]
-    public bool? AlertOnSpawn { get; set; }
+    public bool? RenderSpawnAreaGizmos { get; set; }
 
     [YamlMember(Order = 8)]
-    public float? SpawnBossDelay { get; set; }
+    public bool? AlertOnSpawn { get; set; }
 
     [YamlMember(Order = 9)]
-    public FloatRangeDefinition? SpawnBossDistance { get; set; }
+    public float? SpawnBossDelay { get; set; }
 
     [YamlMember(Order = 10)]
-    public float? SpawnBossMaxYDistance { get; set; }
+    public FloatRangeDefinition? SpawnBossDistance { get; set; }
 
     [YamlMember(Order = 11)]
-    public int? GetSolidHeightMargin { get; set; }
+    public float? SpawnBossMaxYDistance { get; set; }
 
     [YamlMember(Order = 12)]
-    public bool? EnableSolidHeightCheck { get; set; }
+    public int? GetSolidHeightMargin { get; set; }
 
     [YamlMember(Order = 13)]
-    public float? SpawnPointClearingRadius { get; set; }
+    public bool? EnableSolidHeightCheck { get; set; }
 
     [YamlMember(Order = 14)]
-    public float? SpawnYOffset { get; set; }
+    public float? SpawnPointClearingRadius { get; set; }
 
     [YamlMember(Order = 15)]
-    public bool? UseItemStands { get; set; }
+    public float? SpawnYOffset { get; set; }
 
     [YamlMember(Order = 16)]
-    public string? ItemStandPrefix { get; set; }
+    public bool? UseItemStands { get; set; }
 
     [YamlMember(Order = 17)]
-    public float? ItemStandMaxRange { get; set; }
+    public string? ItemStandPrefix { get; set; }
 
     [YamlMember(Order = 18)]
+    public float? ItemStandMaxRange { get; set; }
+
+    [YamlMember(Order = 19)]
     public float? RespawnMinutes { get; set; }
 }
 
@@ -161,6 +164,7 @@ internal static class AltarConfiguration
             return;
         }
 
+        definition.Path = NormalizeOptionalString(definition.Path);
         definition.BossItem = NormalizeOptionalString(definition.BossItem);
         definition.BossPrefab = NormalizeOptionalString(definition.BossPrefab);
         definition.ItemPrefab = NormalizeOptionalString(definition.ItemPrefab);
@@ -237,6 +241,7 @@ internal static class AltarConfigurationFiles
         builder.AppendLine("# - prefab: Bonemass");
         builder.AppendLine("#   enabled: true # Default true when omitted.");
         builder.AppendLine("#   offeringBowl:");
+        builder.AppendLine("#     path: null # Omit for a single bowl. Use a generated path to select one when the location has multiple bowls.");
         builder.AppendLine("#     bossItem: null # ex) WitheredBone. Required direct offering item prefab.");
         builder.AppendLine("#     bossItems: null # ex) 10. Number of bossItem items required; clamped to at least 1 when set.");
         builder.AppendLine("#     bossPrefab: null # ex) Bonemass. Boss character prefab spawned after a valid offering.");

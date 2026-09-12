@@ -65,6 +65,8 @@ The release package includes `BossRules.English.yml` as an editable translation 
 
 Use the generated `BossRules.altar.reference.yml` to find real prefab names, item stand paths, and current altar values. Copy only the rows you want to override into `BossRules.altar.yml`.
 
+When a location contains multiple `OfferingBowl` components, the generated reference writes one row per bowl with an `offeringBowl.path`. Single-bowl locations keep the compact pathless format. Existing pathless overrides remain compatible and select the first bowl, while an explicit missing path skips that row.
+
 BossRules intentionally does not own general location editing, object drops, runestone pins, or vegvisir rewards.
 
 ## Boss Rules

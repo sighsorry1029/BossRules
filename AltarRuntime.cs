@@ -10,6 +10,7 @@ internal static partial class AltarRuntime
     private static readonly object Sync = new();
     private static readonly int OfferingBowlLastUseTicksKey = $"{BossRulesPlugin.ModName}.offering_bowl_last_use_ticks".GetStableHashCode();
     private static readonly Dictionary<string, List<AltarConfigurationEntry>> ActiveEntriesByPrefab = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> OfferingBowlSelectionWarnings = new(StringComparer.Ordinal);
     private static readonly Dictionary<Location, string> RegisteredLocationPrefabs = new();
     private static readonly Dictionary<OfferingBowl, string> RegisteredQueenDungeonOfferingBowls = new();
     private static readonly Dictionary<Room, DungeonGenerator> PendingQueenDungeonRooms = new();
@@ -31,6 +32,7 @@ internal static partial class AltarRuntime
         {
             AdvanceConfigurationGeneration();
             ActiveEntriesByPrefab.Clear();
+            OfferingBowlSelectionWarnings.Clear();
             AuthoredItemStandSlotsByPrefab.Clear();
             AltarItemStandHoverInfoFormatter.ClearRuntimeCaches();
             OfferingBowlHoverInfoFormatter.ClearRuntimeCaches();
@@ -86,6 +88,7 @@ internal static partial class AltarRuntime
             RegisteredQueenDungeonOfferingBowls.Clear();
             PendingQueenDungeonRooms.Clear();
             ActiveEntriesByPrefab.Clear();
+            OfferingBowlSelectionWarnings.Clear();
             AuthoredItemStandSlotsByPrefab.Clear();
             PendingAltarBossSpawns.Clear();
             PendingAltarBossSpawnRemovals.Clear();
@@ -637,19 +640,86 @@ internal static partial class AltarRuntime
 
         foreach (AltarConfigurationEntry entry in entries)
         {
-            if (entry.OfferingBowl != null && offeringBowl != null)
+            if (!TryResolveEntryOfferingBowl(
+                    entry,
+                    root,
+                    normalizedPrefab,
+                    offeringBowls,
+                    offeringBowl,
+                    out OfferingBowl? entryOfferingBowl))
             {
-                ApplyOfferingBowl(offeringBowl, entry.OfferingBowl, normalizedPrefab);
+                continue;
+            }
+
+            if (entry.OfferingBowl != null && entryOfferingBowl != null)
+            {
+                ApplyOfferingBowl(entryOfferingBowl, entry.OfferingBowl, normalizedPrefab);
             }
 
             if (entry.ItemStands is { Count: > 0 })
             {
-                List<ItemStand> relevantItemStands = GetRelevantItemStands(offeringBowl, childItemStands);
-                ApplyConfiguredItemStands(entry.ItemStands, relevantItemStands, childItemStandsByPath, normalizedPrefab, root, offeringBowl);
+                List<ItemStand> relevantItemStands = GetRelevantItemStands(entryOfferingBowl, childItemStands);
+                ApplyConfiguredItemStands(entry.ItemStands, relevantItemStands, childItemStandsByPath, normalizedPrefab, root, entryOfferingBowl);
             }
         }
 
         MarkOfferingBowlsReconciled(offeringBowls, root, normalizedPrefab);
+    }
+
+    private static bool TryResolveEntryOfferingBowl(
+        AltarConfigurationEntry entry,
+        Transform root,
+        string prefabName,
+        IReadOnlyList<OfferingBowl> offeringBowls,
+        OfferingBowl? legacyOfferingBowl,
+        out OfferingBowl? selectedOfferingBowl)
+    {
+        selectedOfferingBowl = legacyOfferingBowl;
+        if (entry.OfferingBowl == null)
+        {
+            return true;
+        }
+
+        string path = (entry.OfferingBowl.Path ?? "").Trim();
+        if (path.Length == 0)
+        {
+            int validBowlCount = offeringBowls.Count(offeringBowl => offeringBowl != null);
+            if (validBowlCount > 1)
+            {
+                WarnOfferingBowlSelectionOnce(
+                    $"{prefabName}@<legacy>",
+                    $"Entry '{prefabName}@offeringBowl' does not specify a path and matched {validBowlCount} OfferingBowl components. " +
+                    "The first one will be used for backward compatibility.");
+            }
+
+            return true;
+        }
+
+        selectedOfferingBowl = offeringBowls.FirstOrDefault(offeringBowl =>
+            offeringBowl != null &&
+            string.Equals(
+                GetRelativePath(root, offeringBowl.transform),
+                path,
+                StringComparison.Ordinal));
+        if (selectedOfferingBowl != null)
+        {
+            BossRulesDebugLog.Client(
+                $"Altar offeringBowl exact path match prefab={prefabName} path='{path}' bowl={selectedOfferingBowl.name}.");
+            return true;
+        }
+
+        WarnOfferingBowlSelectionOnce(
+            $"{prefabName}@{path}",
+            $"Entry '{prefabName}@offeringBowl[{path}]' references a missing OfferingBowl path. The entry was skipped.");
+        return false;
+    }
+
+    private static void WarnOfferingBowlSelectionOnce(string key, string message)
+    {
+        if (OfferingBowlSelectionWarnings.Add(key))
+        {
+            WarnInvalidEntry(message);
+        }
     }
 
     private static bool IsOfferingBowlReconcileCurrent(OfferingBowl offeringBowl, Transform root, string prefabName)
@@ -775,7 +845,9 @@ internal static partial class AltarRuntime
     // Apply configured OfferingBowl and ItemStand overrides.
     private static void ApplyOfferingBowl(OfferingBowl offeringBowl, AltarOfferingBowlDefinition entry, string prefabName)
     {
-        string context = $"{prefabName}@offeringBowl";
+        string context = string.IsNullOrWhiteSpace(entry.Path)
+            ? $"{prefabName}@offeringBowl"
+            : $"{prefabName}@offeringBowl[{entry.Path}]";
 
         if (entry.BossItem != null)
         {
