@@ -151,9 +151,6 @@
         <Content Include="Thunderstore\icon.png"/>
     </ItemGroup>
     <ItemGroup>
-        <None Include="App.config"/>
-    </ItemGroup>
-    <ItemGroup>
         <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.44.1">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
