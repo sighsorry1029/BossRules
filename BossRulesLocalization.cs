@@ -35,7 +35,7 @@ internal static class BossRulesLocalization
 
     internal static string Text(string key)
     {
-        string normalizedKey = NormalizeKey(key);
+        string normalizedKey = Localizer.NormalizeKey(key);
         Localization? localization = Localization.instance;
         if (localization != null &&
             Localizer.TranslationsRef(localization).TryGetValue(
@@ -93,7 +93,7 @@ internal static class BossRulesLocalization
             }
         }
 
-        string normalizedKey = NormalizeKey(nameToken);
+        string normalizedKey = Localizer.NormalizeKey(nameToken);
         if (normalizedKey.Length > 0)
         {
             Localization? localization = Localization.instance;
@@ -189,17 +189,9 @@ internal static class BossRulesLocalization
         }
 
         string value = text!.Trim();
-        string normalizedKey = NormalizeKey(key);
+        string normalizedKey = Localizer.NormalizeKey(key);
         return !string.Equals(value, "$" + normalizedKey, StringComparison.Ordinal) &&
                !string.Equals(value, "[" + normalizedKey + "]", StringComparison.Ordinal) &&
                value.IndexOf("MISSING KEY", StringComparison.OrdinalIgnoreCase) < 0;
-    }
-
-    private static string NormalizeKey(string? key)
-    {
-        string normalized = (key ?? "").Trim();
-        return normalized.StartsWith("$", StringComparison.Ordinal)
-            ? normalized.Substring(1)
-            : normalized;
     }
 }

@@ -454,7 +454,7 @@ internal static class Localizer
         }
     }
 
-    private static string NormalizeKey(string? key)
+    internal static string NormalizeKey(string? key)
     {
         string normalized = (key ?? "").Trim();
         return normalized.StartsWith("$", StringComparison.Ordinal)
