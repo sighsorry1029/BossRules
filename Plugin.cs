@@ -381,75 +381,58 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
     private void LoadLocalAltarYamlAndPublish(string source)
     {
         AltarConfigurationFiles.EnsureDefaultFiles();
-        string yaml;
-        try
-        {
-            yaml = File.ReadAllText(AltarYamlFilePath);
-        }
-        catch (Exception ex)
-        {
-            BossRulesLogger.LogError($"Failed to read {AltarYamlFilePath}. {ex.GetType().Name}: {ex.Message}");
-            return;
-        }
-
-        if (!ApplyAltarYaml(yaml, source))
-        {
-            return;
-        }
-
-        if (IsSourceOfTruth)
-        {
-            _syncedAltarYaml.AssignLocalValue(yaml);
-        }
+        LoadLocalYamlAndPublish(
+            source: source,
+            path: AltarYamlFilePath,
+            applyYaml: ApplyAltarYaml,
+            syncedYaml: _syncedAltarYaml);
     }
 
     private void LoadLocalRulesYamlAndPublish(string source)
     {
         BossRuleConfigurationFiles.EnsureDefaultFile();
-        string yaml;
-        try
-        {
-            yaml = File.ReadAllText(RulesYamlFilePath);
-        }
-        catch (Exception ex)
-        {
-            BossRulesLogger.LogError($"Failed to read {RulesYamlFilePath}. {ex.GetType().Name}: {ex.Message}");
-            return;
-        }
-
-        if (!ApplyRulesYaml(yaml, source))
-        {
-            return;
-        }
-
-        if (IsSourceOfTruth)
-        {
-            _syncedRulesYaml.AssignLocalValue(yaml);
-        }
+        LoadLocalYamlAndPublish(
+            source: source,
+            path: RulesYamlFilePath,
+            applyYaml: ApplyRulesYaml,
+            syncedYaml: _syncedRulesYaml);
     }
 
     private void LoadLocalForsakenPowersYamlAndPublish(string source)
     {
         ForsakenPowerConfigurationFiles.EnsureDefaultFile();
+        LoadLocalYamlAndPublish(
+            source: source,
+            path: ForsakenPowersYamlFilePath,
+            applyYaml: ApplyForsakenPowersYaml,
+            syncedYaml: _syncedForsakenPowersYaml);
+    }
+
+    private void LoadLocalYamlAndPublish(
+        string source,
+        string path,
+        Func<string, string, bool> applyYaml,
+        CustomSyncedValue<string> syncedYaml)
+    {
         string yaml;
         try
         {
-            yaml = File.ReadAllText(ForsakenPowersYamlFilePath);
+            yaml = File.ReadAllText(path);
         }
         catch (Exception ex)
         {
-            BossRulesLogger.LogError($"Failed to read {ForsakenPowersYamlFilePath}. {ex.GetType().Name}: {ex.Message}");
+            BossRulesLogger.LogError($"Failed to read {path}. {ex.GetType().Name}: {ex.Message}");
             return;
         }
 
-        if (!ApplyForsakenPowersYaml(yaml, source))
+        if (!applyYaml(yaml, source))
         {
             return;
         }
 
         if (IsSourceOfTruth)
         {
-            _syncedForsakenPowersYaml.AssignLocalValue(yaml);
+            syncedYaml.AssignLocalValue(yaml);
         }
     }
 
