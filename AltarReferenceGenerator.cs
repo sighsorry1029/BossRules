@@ -153,7 +153,9 @@ internal static class AltarReferenceGenerator
 
     internal static void TryAutoRefreshReferenceConfigurationFile()
     {
-        if (_autoRefreshDone || !BossRulesPlugin.IsSourceOfTruth)
+        if (_autoRefreshDone ||
+            !BossRulesPlugin.IsRuntimeServer() ||
+            !BossRulesPlugin.IsSourceOfTruth)
         {
             return;
         }
