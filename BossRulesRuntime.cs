@@ -142,6 +142,28 @@ internal static class BossRulesRuntime
         return _runtimeState.BootstrapPrefabs.Contains(prefabName);
     }
 
+    internal static bool ShouldProtectInitialBoss(ZDO zdo, string prefabName)
+    {
+        if (!InitialBossEncounter.IsWaitingForPlayer(zdo))
+        {
+            return false;
+        }
+
+        EnsureRuntimeState();
+        // Preserve the precedence of explicitly configured prefab rules over defaults.
+        return !_runtimeState.RulesByPrefabHash.ContainsKey(zdo.GetPrefab()) &&
+               !_runtimeState.RulesByPrefab.ContainsKey(prefabName);
+    }
+
+    internal static float GetInitialBossEncounterRange(ZDO zdo)
+    {
+        EnsureRuntimeState();
+        float? rangeOverride = _runtimeState.RulesByPrefabHash.TryGetValue(zdo.GetPrefab(), out CompiledDespawnRule? rule)
+            ? rule.RangeOverride
+            : null;
+        return Mathf.Clamp(rangeOverride ?? _configuration.DefaultDespawnRange, 0f, 128f);
+    }
+
     internal static bool TryResolveDespawnTrackingRule(
         ZDO zdo,
         int prefabHashHint,

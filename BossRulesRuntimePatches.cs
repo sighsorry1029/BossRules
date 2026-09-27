@@ -32,28 +32,25 @@ internal static class ZoneSystemSpawnLocationAltarPatch
     {
         public string PrefabName { get; set; } = "";
         public string PreviousLocationSpawnContext { get; set; } = "";
+        public int PreviousInitialBossContext { get; set; }
     }
 
-    private static void Prefix(ZoneSystem.ZoneLocation location, ref SpawnLocationState? __state)
+    private static void Prefix(ZoneSystem.ZoneLocation location, ZoneSystem.SpawnMode mode, ref SpawnLocationState? __state)
     {
         string prefabName = AltarLocationResolver.GetLocationSpawnContextPrefabName(location);
-        if (prefabName.Length == 0)
-        {
-            return;
-        }
-
         SpawnLocationState state = new()
         {
             PrefabName = prefabName
         };
+        __state = state;
+        state.PreviousInitialBossContext = InitialBossEncounter.BeginLocationGeneration(prefabName, mode);
         state.PreviousLocationSpawnContext =
             QueenDungeonAltarSupport.BeginLocationSpawnContext(prefabName);
-        __state = state;
     }
 
     private static void Postfix(GameObject __result, SpawnLocationState? __state)
     {
-        if (__result == null || __state == null)
+        if (__result == null || __state == null || __state.PrefabName.Length == 0)
         {
             return;
         }
@@ -65,6 +62,7 @@ internal static class ZoneSystemSpawnLocationAltarPatch
     {
         if (__state != null)
         {
+            InitialBossEncounter.RestoreGeneration(__state.PreviousInitialBossContext);
             QueenDungeonAltarSupport.RestoreLocationSpawnContext(
                 __state.PreviousLocationSpawnContext);
         }
@@ -111,32 +109,38 @@ internal static class DungeonGeneratorPlaceQueenRoomAltarPatch
     {
         public DungeonGenerator Generator { get; set; } = null!;
         public string LocationPrefab { get; set; } = "";
+        public bool IsQueenRoom { get; set; }
+        public int PreviousInitialBossContext { get; set; }
     }
 
     private static void Prefix(
         DungeonGenerator __instance,
         DungeonDB.RoomData roomData,
+        ZoneSystem.SpawnMode mode,
         ref RoomPlacementState? __state)
     {
-        if (!QueenDungeonAltarSupport.IsTargetRoom(roomData))
+        RoomPlacementState state = new()
+        {
+            Generator = __instance,
+            IsQueenRoom = QueenDungeonAltarSupport.IsTargetRoom(roomData)
+        };
+        __state = state;
+        state.PreviousInitialBossContext = InitialBossEncounter.BeginRoomGeneration(
+            state.IsQueenRoom && QueenDungeonAltarSupport.IsTargetGenerator(__instance), mode);
+        if (!state.IsQueenRoom)
         {
             return;
         }
 
-        RoomPlacementState state = new()
-        {
-            Generator = __instance
-        };
         QueenDungeonAltarSupport.TryResolveGeneratorLocationPrefab(
             __instance,
             out string locationPrefab);
         state.LocationPrefab = locationPrefab;
-        __state = state;
     }
 
     private static void Postfix(Room __result, RoomPlacementState? __state)
     {
-        if (__result != null && __state != null)
+        if (__result != null && __state != null && __state.IsQueenRoom)
         {
             // The Queen bowl remains in this room shell and uses the parent
             // DungeonGenerator's ZNetView, so reconcile it before OfferingBowl.Start.
@@ -145,6 +149,16 @@ internal static class DungeonGeneratorPlaceQueenRoomAltarPatch
                 __state.Generator,
                 __state.LocationPrefab);
         }
+    }
+
+    private static Exception? Finalizer(Exception? __exception, RoomPlacementState? __state)
+    {
+        if (__state != null)
+        {
+            InitialBossEncounter.RestoreGeneration(__state.PreviousInitialBossContext);
+        }
+
+        return __exception;
     }
 }
 
@@ -388,6 +402,7 @@ internal static class CharacterAwakeBossRulesPatch
     private static void Postfix(Character __instance)
     {
         AltarRuntime.TryMarkAltarSummonedCharacter(__instance);
+        InitialBossEncounter.Track(__instance);
         BossRulesManager.TrackBossCharacter(__instance);
         DespawnRulesManager.TryTrackLoadedDespawnTarget(__instance);
     }
@@ -399,6 +414,7 @@ internal static class CharacterOnDestroyBossRulesPatch
     private static void Prefix(Character __instance)
     {
         BossRulesManager.UntrackBossCharacter(__instance);
+        InitialBossEncounter.Untrack(__instance);
     }
 }
 
@@ -440,6 +456,7 @@ internal static class ZDOManCreateNewZdoDespawnPatch
     private static void Postfix(int prefabHashIn, ZDO __result)
     {
         AltarRuntime.TryMarkCreatedAltarSummonZdo(prefabHashIn, __result);
+        InitialBossEncounter.MarkCreatedBoss(prefabHashIn, __result);
         DespawnRulesManager.QueueCreatedDespawnTarget(prefabHashIn, __result);
     }
 }

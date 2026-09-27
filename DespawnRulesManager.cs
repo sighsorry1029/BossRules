@@ -315,6 +315,14 @@ internal static partial class DespawnRulesManager
             return;
         }
 
+        if (BossRulesRuntime.ShouldProtectInitialBoss(zdo, state.PrefabName))
+        {
+            state.ResetCountdown();
+            // Keep observing the ZDO: the boss owner may be a remote client.
+            ScheduleTrackedDespawnCheck(zdoId, state, nowSeconds + DespawnIdleCheckIntervalSeconds);
+            return;
+        }
+
         float despawnRange = state.GetEffectiveRange();
         float despawnDelaySeconds = state.GetEffectiveDelaySeconds();
         if (despawnRange <= 0f)
@@ -457,6 +465,12 @@ internal static partial class DespawnRulesManager
         TrackedDespawnState? state = ApplyObservation(observation, zdo);
         if (state == null)
         {
+            return;
+        }
+
+        if (BossRulesRuntime.ShouldProtectInitialBoss(zdo, state.PrefabName))
+        {
+            state.ResetCountdown();
             return;
         }
 

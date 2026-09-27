@@ -362,6 +362,8 @@ internal static partial class AltarRuntime
         return true;
     }
 
+    internal static bool IsAltarSummoned(ZDO zdo) => zdo.GetBool(AltarSummonKey);
+
     internal static bool TryResolveAltarSummonRefunds(ZDO? zdo, out IReadOnlyCollection<DespawnRefundDrop> refunds)
     {
         refunds = Array.Empty<DespawnRefundDrop>();

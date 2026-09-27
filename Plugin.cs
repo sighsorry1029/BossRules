@@ -15,7 +15,7 @@ namespace BossRules;
 public sealed class BossRulesPlugin : BaseUnityPlugin
 {
     internal const string ModName = "BossRules";
-    internal const string ModVersion = "1.0.10";
+    internal const string ModVersion = "1.1.0";
     internal const string Author = "sighsorry";
     internal const string ModGUID = $"{Author}.{ModName}";
     internal const string AltarYamlFileName = $"{ModName}.altar.yml";
@@ -101,6 +101,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         BossStonePerPlayerRuntime.ProcessPendingSacrificeRequests();
         BossStonePerPlayerRuntime.ProcessPendingResetRequests();
         DespawnRulesManager.EnsureMessageRpcRegistered();
+        InitialBossEncounter.CheckApproaches();
         DespawnRulesManager.ExecuteServerTick();
         BossTamedPressureRuntime.ExecuteServerTick();
     }
@@ -137,6 +138,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         AltarReferenceGenerator.ShutdownAutoRefresh();
         BossRulesManager.ClearRuntimeState();
         BossRulesRuntime.Reset();
+        InitialBossEncounter.ResetRuntimeState();
         ForsakenPowerRuntime.Reset();
         DataForgeStatusEffectBridge.Shutdown();
         Localizer.Shutdown();

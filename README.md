@@ -99,6 +99,10 @@ Refund values:
 
 Refunds drop at the original `OfferingBowl` position when possible. Bosses from `CreatureSpawner`, `SpawnSystem`, or other world sources do not receive altar refunds just because they died near an altar.
 
+Newly generated initial Queens in the Queen boss room and initial Frozen Kings in `DN_Bossroom` are protected from default automatic despawn until a living player approaches within the configured XZ despawn range and a height difference of at most 32m. Approach is checked once per second by the boss's network owner. It does not require opening the door, entering the room, line of sight, or combat: a nearby player outside a wall at the same height can release protection. After that first approach, the existing XZ-only range and countdown apply, without altar refunds. An explicit row for the boss in `despawn.rules` takes precedence, including before the first approach.
+
+Initial provenance and first approach are saved on each boss ZDO, so they survive normal saves, reloads, and ownership changes. This applies to new Full/Ghost location or room generation, including resets; existing bosses with unknown provenance are not reclassified, and already missing bosses are not restored. Altar resummons keep their existing despawn and refund behavior. The approach checks must also be installed on clients that can own the boss.
+
 ## Localization
 
 BossRules includes English and Korean message translations. Add overrides in `BossRules.<Language>.yml` or `.json`; the file name uses Valheim's language name, for example `BossRules.Korean.yml`.
