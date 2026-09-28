@@ -219,6 +219,7 @@ internal static class OfferingBowlGetHoverTextAltarPatch
 {
     private static void Postfix(OfferingBowl __instance, ref string __result)
     {
+        __result = PersonalSummonRuntime.AppendHover(__result, __instance);
         if (!BossRulesConfig.ShouldShowOfferingBowlHoverInfo())
         {
             return;
@@ -234,6 +235,11 @@ internal static class OfferingBowlInteractAltarPatch
 {
     private static bool Prefix(OfferingBowl __instance, Humanoid user, bool hold, ref bool __result)
     {
+        if (!hold && PersonalSummonRuntime.TryInteract(__instance, user))
+        {
+            __result = true;
+            return false;
+        }
         if (!BossRulesConfig.IsAltarRulesEnabled() || hold || !__instance.m_useItemStands)
         {
             return true;
@@ -254,8 +260,15 @@ internal static class OfferingBowlInteractAltarPatch
 [HarmonyPatch(typeof(OfferingBowl), nameof(OfferingBowl.UseItem))]
 internal static class OfferingBowlUseItemAltarPatch
 {
-    private static bool Prefix(OfferingBowl __instance, Humanoid user, ref bool __result)
+    [HarmonyAfter(YouAreNotWorthyBridge.PluginGuid)]
+    private static bool Prefix(OfferingBowl __instance, Humanoid user, ItemDrop.ItemData item, ref bool __result)
     {
+        if (item?.m_shared != null && __instance.m_bossItem?.m_itemData?.m_shared?.m_name == item.m_shared.m_name
+            && PersonalSummonRuntime.TryInteract(__instance, user))
+        {
+            __result = true;
+            return false;
+        }
         if (!BossRulesConfig.IsAltarRulesEnabled() || __instance.m_useItemStands)
         {
             return true;
@@ -307,7 +320,8 @@ internal static class OfferingBowlDelayedSpawnBossAltarPatch
 
     private static void Prefix(OfferingBowl __instance)
     {
-        if (ZNet.instance != null && BossRulesConfig.ShouldCaptureAltarSpawnRefunds())
+        if (ZNet.instance != null && (BossRulesConfig.ShouldCaptureAltarSpawnRefunds()
+            || __instance.GetComponent<OfferingBowlRuntimeState>()?.FreeSummonQueued == true))
         {
             AltarRuntime.BeginOfferingBowlBossSpawnAttempt(__instance, BossSpawnPointRef(__instance));
         }
@@ -315,7 +329,8 @@ internal static class OfferingBowlDelayedSpawnBossAltarPatch
 
     private static void Postfix(OfferingBowl __instance)
     {
-        if (ZNet.instance != null && BossRulesConfig.ShouldCaptureAltarSpawnRefunds())
+        if (ZNet.instance != null && (BossRulesConfig.ShouldCaptureAltarSpawnRefunds()
+            || __instance.GetComponent<OfferingBowlRuntimeState>()?.FreeSummonQueued == true))
         {
             AltarRuntime.FinalizeOfferingBowlBossSpawnAttempt();
         }
@@ -327,7 +342,10 @@ internal static class OfferingBowlSpawnBossAltarPatch
 {
     private static void Prefix(OfferingBowl __instance, Vector3 spawnPoint)
     {
-        if (ZNet.instance != null && BossRulesConfig.ShouldCaptureAltarSpawnRefunds())
+        OfferingBowlRuntimeState state = __instance.GetComponent<OfferingBowlRuntimeState>()
+            ?? __instance.gameObject.AddComponent<OfferingBowlRuntimeState>();
+        state.FreeSummonQueued = PersonalSummonRuntime.IsFreeSpawn(__instance);
+        if (ZNet.instance != null && (BossRulesConfig.ShouldCaptureAltarSpawnRefunds() || state.FreeSummonQueued))
         {
             AltarRuntime.PrepareAndQueueOfferingBowlRefundPayload(__instance, spawnPoint);
         }

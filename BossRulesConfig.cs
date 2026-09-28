@@ -7,6 +7,7 @@ internal static class BossRulesConfig
 {
     private const float SameBossDuplicateBlockRadius = 64f;
     private static ConfigEntry<BossRulesPlugin.Toggle> _enableAltarRules = null!;
+    private static ConfigEntry<BossRulesPlugin.Toggle> _personalProgressionSummons = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _showOfferingBowlHoverInfo = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _enableSameBossDuplicateBlock = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _enableDespawnRules = null!;
@@ -19,6 +20,10 @@ internal static class BossRulesConfig
 
     internal static void Bind(BossRulesPlugin plugin)
     {
+        _personalProgressionSummons = plugin.BindConfigEntry(
+            "2 - Forsaken & Altars", "Personal Progression Summons", BossRulesPlugin.Toggle.On,
+            "With YouAreNotWorthy, allow free Queen summons until personal defeated_queen, and free inner Frozen King summons with personal LastBossGate_Open until defeated_frozenking_p3. Keeps item progression requirements; free summons have no refunds. The outer gate cost is unchanged.",
+            synchronizedSetting: true, configManagerOrder: 150);
         _rotateForsakenPowerShortcut = plugin.BindConfigEntry(
             "2 - Forsaken & Altars",
             "Rotate Forsaken Power Shortcut",
@@ -92,6 +97,8 @@ internal static class BossRulesConfig
     }
 
     internal static bool IsAltarRulesEnabled() => _enableAltarRules?.Value != BossRulesPlugin.Toggle.Off;
+
+    internal static bool IsPersonalProgressionSummonsEnabled() => _personalProgressionSummons?.Value == BossRulesPlugin.Toggle.On;
 
     internal static bool ShouldShowOfferingBowlHoverInfo() => _showOfferingBowlHoverInfo?.Value != BossRulesPlugin.Toggle.Off;
 

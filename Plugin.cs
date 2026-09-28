@@ -12,10 +12,11 @@ using UnityEngine;
 namespace BossRules;
 
 [BepInPlugin(ModGUID, ModName, ModVersion)]
+[BepInDependency(YouAreNotWorthyBridge.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
 public sealed class BossRulesPlugin : BaseUnityPlugin
 {
     internal const string ModName = "BossRules";
-    internal const string ModVersion = "1.1.1";
+    internal const string ModVersion = "1.1.2";
     internal const string Author = "sighsorry";
     internal const string ModGUID = $"{Author}.{ModName}";
     internal const string AltarYamlFileName = $"{ModName}.altar.yml";
@@ -89,6 +90,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
 
     private void Update()
     {
+        PersonalSummonRuntime.Update();
         ProcessQueuedYamlReload();
         Localizer.ProcessDeferredLoad();
         DataForgeStatusEffectBridge.ProcessDeferredSubscription();
@@ -132,6 +134,7 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         Interlocked.Exchange(ref _forsakenPowersYamlReloadRequested, 0);
         ClearPendingYamlReloads();
         AltarRuntime.Shutdown();
+        PersonalSummonRuntime.Shutdown();
         BossStonePerPlayerRuntime.Shutdown();
         DespawnRulesManager.ShutdownMessages();
         ForsakenPowerSelectionRuntime.Shutdown();

@@ -69,6 +69,42 @@ When a location contains multiple `OfferingBowl` components, the generated refer
 
 BossRules intentionally does not own general location editing, object drops, runestone pins, or vegvisir rewards.
 
+## Personal first-victory summons (optional YouAreNotWorthy integration)
+
+With BossRules 1.1.2+ and YouAreNotWorthy 1.0.8+ installed on the host/server and clients, the synced
+`Personal Progression Summons` option (default On) enables these inner altars:
+
+| Altar | Free summon condition |
+| --- | --- |
+| Queen (`offeraltar_queen`, inside `DG_DvergrBoss`) | Personal `defeated_queen` is missing |
+| Frozen King (`offeraltar_FrozenKing_bossroom`) | Personal `LastBossGate_Open` is present and `defeated_frozenking_p3` is missing |
+
+Use the displayed **Use** interaction (normally E); no offering item in the
+inventory is required. Using the matching offering item also requests a free
+summon when eligible. YNW's item progression requirements still apply. The
+Frozen King final phase key is used, not the first phase's `defeated_frozenking`.
+After personal completion, the normal offering and configured amount apply.
+The exterior Frozen King gate keeps its normal cost and key-grant behavior.
+
+These are free attempts until completion, not a one-use voucher or a location
+reset. An eligible player can summon for their group. Free summons have **no
+offering refunds**, including after despawn, save/reload, or a later setting
+change. Native spawn delay/effects and existing enabled duplicate/cooldown rules
+remain. Bowls changed to use item stands, grant a key, spawn an item, or summon a
+different boss are excluded from this integration.
+
+The server checks YNW's authenticated character snapshot and item requirement;
+temporarily unavailable data does not authorize a free summon or silently charge
+the local request. The native object owner resolves the actual dungeon bowl and
+its configured item, because a dedicated server may have only its ZDO loaded.
+Only that owner may consume the short-lived server approval. Ownership changes
+or expiry cancel the request; press Use again. Once native delayed spawning has
+begun, its usual lifecycle applies. This follows Valheim's object-owner trust
+model and YNW's client-owned progression snapshots; it is not an anti-cheat ledger.
+
+YNW without the new item-use API, or no YNW, leaves normal paid summons in place.
+No existing altar YAML or personal-key save format needs migration.
+
 ## Boss Rules
 
 `BossRules.yml` controls runtime boss behavior:

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <!-- Lets the production optional bridge bind the deliberately fake YNW API. -->
+    <AssemblyName>YouAreNotWorthy</AssemblyName>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../PersonalSummonRuntime.cs" Link="PersonalSummonRuntime.cs" />
+    <Compile Include="../../YouAreNotWorthyBridge.cs" Link="YouAreNotWorthyBridge.cs" />
+    <PackageReference Include="Lib.Harmony" Version="2.4.1" />
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
+  </ItemGroup>
+</Project>

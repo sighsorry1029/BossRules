@@ -110,6 +110,8 @@
         <Compile Include="AltarRuntime.Refunds.cs"/>
         <Compile Include="BossRulesRuntimePatches.cs"/>
         <Compile Include="InitialBossEncounter.cs"/>
+        <Compile Include="PersonalSummonRuntime.cs"/>
+        <Compile Include="YouAreNotWorthyBridge.cs"/>
         <Compile Include="QueenDungeonAltarSupport.cs"/>
         <Compile Include="AltarLocationResolver.cs"/>
         <Compile Include="AltarHoverInfoFormatters.cs"/>

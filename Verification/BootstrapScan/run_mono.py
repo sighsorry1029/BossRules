@@ -4,15 +4,17 @@ import os
 from pathlib import Path
 import sys
 
-if len(sys.argv) != 4:
-    raise SystemExit("Usage: python run_mono.py <game directory> <BossRules.dll> <BepInEx core directory>")
+if len(sys.argv) not in (4, 5):
+    raise SystemExit("Usage: python run_mono.py <game directory> <BossRules.dll> <BepInEx core directory> [managed check executable]")
 
-game, plugin, core = (Path(p).resolve() for p in sys.argv[1:])
+game, plugin, core = (Path(p).resolve() for p in sys.argv[1:4])
 managed = game / "valheim_Data" / "Managed"
 if not managed.is_dir():
     managed = game / "valheim_server_Data" / "Managed"
 runtime = game / "MonoBleedingEdge"
 runner = Path(__file__).resolve().parent / "bin" / "Debug" / "net48" / "BootstrapScan.Tests.exe"
+if len(sys.argv) == 5:
+    runner = Path(sys.argv[4]).resolve()
 directory_handle = os.add_dll_directory(str(runtime / "EmbedRuntime"))
 mono = ctypes.CDLL(str(runtime / "EmbedRuntime" / "mono-2.0-bdwgc.dll"))
 mono.mono_set_dirs.argtypes = [ctypes.c_char_p, ctypes.c_char_p]

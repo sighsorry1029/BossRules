@@ -397,6 +397,11 @@ internal static partial class AltarRuntime
 
     private static string BuildOfferingRefundPayload(OfferingBowl offeringBowl)
     {
+        if (offeringBowl.GetComponent<OfferingBowlRuntimeState>()?.FreeSummonQueued == true)
+        {
+            return "";
+        }
+
         Dictionary<string, int> refunds = new(StringComparer.OrdinalIgnoreCase);
         if (offeringBowl.m_useItemStands)
         {
