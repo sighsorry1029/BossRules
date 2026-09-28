@@ -55,7 +55,6 @@ internal static class InitialBossEncounter
         }
 
         zdo.Set(EncounterKey, WaitingForPlayer);
-        BossRulesDebugLog.Client($"Initial boss protected prefabHash={prefabHash} zdo={zdo.m_uid}.");
     }
 
     internal static bool IsWaitingForPlayer(ZDO zdo)
@@ -136,7 +135,6 @@ internal static class InitialBossEncounter
 
                 zdo.Set(EncounterKey, Encountered);
                 PendingRemovals.Add(character);
-                BossRulesDebugLog.Client($"Initial boss encountered by player proximity zdo={zdo.m_uid}.");
                 break;
             }
         }

@@ -113,7 +113,6 @@
         <Compile Include="QueenDungeonAltarSupport.cs"/>
         <Compile Include="AltarLocationResolver.cs"/>
         <Compile Include="AltarHoverInfoFormatters.cs"/>
-        <Compile Include="BossRulesDebugLog.cs"/>
         <Compile Include="BossRulesConfig.cs"/>
         <Compile Include="BossRulesManager.cs"/>
         <Compile Include="BossRulesRuntime.cs"/>

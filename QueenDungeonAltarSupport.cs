@@ -161,8 +161,6 @@ internal static class QueenDungeonAltarSupport
             }
         }
 
-        bool changed = !GeneratorLocationPrefabs.TryGetValue(generator, out string? current) ||
-                       !string.Equals(current, normalized, StringComparison.OrdinalIgnoreCase);
         GeneratorLocationPrefabs[generator] = normalized;
 
         ZNetView? nview = generator.GetComponent<ZNetView>();
@@ -170,12 +168,6 @@ internal static class QueenDungeonAltarSupport
         if (nview?.IsOwner() == true && zdo != null)
         {
             zdo.Set(GeneratorLocationPrefabZdoKey, normalized);
-        }
-
-        if (changed)
-        {
-            BossRulesDebugLog.Client(
-                $"Queen dungeon generator context resolved prefab={normalized} generator={generator.name}.");
         }
     }
 

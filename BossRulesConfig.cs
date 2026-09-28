@@ -6,7 +6,6 @@ namespace BossRules;
 internal static class BossRulesConfig
 {
     private const float SameBossDuplicateBlockRadius = 64f;
-    private static ConfigEntry<BossRulesPlugin.Toggle> _clientDebugLog = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _enableAltarRules = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _showOfferingBowlHoverInfo = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _enableSameBossDuplicateBlock = null!;
@@ -20,13 +19,6 @@ internal static class BossRulesConfig
 
     internal static void Bind(BossRulesPlugin plugin)
     {
-        _clientDebugLog = plugin.BindConfigEntry(
-            "1 - General",
-            "Client Debug Log",
-            BossRulesPlugin.Toggle.Off,
-            "If on, writes local BossRules diagnostic logs for this machine. Useful for altar refund and runtime tracing.",
-            synchronizedSetting: false,
-            configManagerOrder: 100);
         _rotateForsakenPowerShortcut = plugin.BindConfigEntry(
             "2 - Forsaken & Altars",
             "Rotate Forsaken Power Shortcut",
@@ -98,8 +90,6 @@ internal static class BossRulesConfig
             synchronizedSetting: true,
             configManagerOrder: 300);
     }
-
-    internal static bool IsClientDebugLogEnabled() => _clientDebugLog?.Value == BossRulesPlugin.Toggle.On;
 
     internal static bool IsAltarRulesEnabled() => _enableAltarRules?.Value != BossRulesPlugin.Toggle.Off;
 

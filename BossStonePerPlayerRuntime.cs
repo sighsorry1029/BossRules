@@ -137,18 +137,18 @@ internal static class BossStonePerPlayerRuntime
 
             if (now - request.CreatedAt >= BossStoneSacrificeRequestTimeoutSeconds)
             {
-                CompletePendingBossStoneSacrificeRequest(key, "timed out waiting for the local boss stone instance");
+                PendingBossStoneSacrificeRequests.Remove(key);
                 continue;
             }
 
-            BossStoneSacrificeApplyResult result = TryApplyReceivedBossStoneSacrifice(request, out string reason);
+            BossStoneSacrificeApplyResult result = TryApplyReceivedBossStoneSacrifice(request);
             if (result == BossStoneSacrificeApplyResult.Retry)
             {
                 request.NextRetryAt = now + BossStoneSacrificeRetryIntervalSeconds;
                 continue;
             }
 
-            CompletePendingBossStoneSacrificeRequest(key, reason);
+            PendingBossStoneSacrificeRequests.Remove(key);
         }
     }
 
@@ -240,7 +240,6 @@ internal static class BossStonePerPlayerRuntime
             !TryGetItemStandZdoId(bossStone.m_itemStand, out ZDOID itemStandId) ||
             !TryResolveBossStoneGuardianPowerName(bossStone, out string guardianPowerName))
         {
-            BossRulesDebugLog.Client($"Boss stone sacrifice skipped: routed RPC or ItemStand ZDO is not ready for {bossStone.name}.");
             localPlayer.Message(MessageHud.MessageType.Center, "$piece_itemstand_cantattach");
             result = true;
             return true;
@@ -549,10 +548,9 @@ internal static class BossStonePerPlayerRuntime
             NextRetryAt = now + BossStoneSacrificeRetryIntervalSeconds
         };
 
-        BossStoneSacrificeApplyResult result = TryApplyReceivedBossStoneSacrifice(request, out string reason);
+        BossStoneSacrificeApplyResult result = TryApplyReceivedBossStoneSacrifice(request);
         if (result != BossStoneSacrificeApplyResult.Retry)
         {
-            BossRulesDebugLog.Client($"Boss stone sacrifice request sender={sender} request={requestId} itemStand={itemStandId}: {reason}.");
             return;
         }
 
@@ -560,40 +558,33 @@ internal static class BossStonePerPlayerRuntime
         if (PendingBossStoneSacrificeRequests.Count >= MaxPendingBossStoneSacrificeRequests ||
             pendingFromSender >= MaxPendingBossStoneSacrificeRequestsPerSender)
         {
-            BossRulesDebugLog.Client($"Boss stone sacrifice request sender={sender} request={requestId} itemStand={itemStandId} rejected: pending retry limit reached.");
             return;
         }
 
         PendingBossStoneSacrificeRequests[key] = request;
-        BossRulesDebugLog.Client($"Boss stone sacrifice request sender={sender} request={requestId} itemStand={itemStandId} queued: {reason}.");
     }
 
     private static BossStoneSacrificeApplyResult TryApplyReceivedBossStoneSacrifice(
-        PendingBossStoneSacrificeRequest request,
-        out string reason)
+        PendingBossStoneSacrificeRequest request)
     {
         Player? localPlayer = Player.m_localPlayer;
         if (!BossRulesConfig.IsPerPlayerBossStonesEnabled())
         {
-            reason = "personalized boss stones are disabled";
             return BossStoneSacrificeApplyResult.Rejected;
         }
 
         if (localPlayer == null || localPlayer.GetPlayerID() != request.LocalPlayerId)
         {
-            reason = "the receiving local player changed before the request could be applied";
             return BossStoneSacrificeApplyResult.Rejected;
         }
 
         if (ZNetScene.instance == null)
         {
-            reason = "the local network scene is not ready";
             return BossStoneSacrificeApplyResult.Retry;
         }
 
         if (ZNetScene.instance.FindInstance(request.ItemStandId) == null)
         {
-            reason = "the local ItemStand instance is not loaded yet";
             return BossStoneSacrificeApplyResult.Retry;
         }
 
@@ -603,34 +594,29 @@ internal static class BossStonePerPlayerRuntime
                 out BossStone? bossStone) ||
             bossStone == null)
         {
-            reason = "the resolved ItemStand ZDO does not belong to a live BossStone";
             return BossStoneSacrificeApplyResult.Rejected;
         }
 
         Location? location = GetBossStoneLocation(bossStone);
         if (location == null)
         {
-            reason = "the local boss stone location is not resolved yet";
             return BossStoneSacrificeApplyResult.Retry;
         }
 
         if (!IsPerPlayerBossStoneLocation(location) ||
             !location.IsInside(bossStone.transform.position, 0f, false))
         {
-            reason = $"location '{Utils.GetPrefabName(location.gameObject.name)}' is not eligible for personalized boss stones";
             return BossStoneSacrificeApplyResult.Rejected;
         }
 
         if (!location.IsInside(request.LocalPlayerPositionAtReceipt, 0f, false))
         {
-            reason = $"the local player was outside location '{Utils.GetPrefabName(location.gameObject.name)}' when the sacrifice was received";
             return BossStoneSacrificeApplyResult.Rejected;
         }
 
         string playerKey = GetPlayerKey(bossStone);
         if (!TryNormalizePlayerKey(playerKey, out string normalizedPlayerKey))
         {
-            reason = "the live boss stone did not resolve a valid player key";
             return BossStoneSacrificeApplyResult.Rejected;
         }
 
@@ -641,7 +627,6 @@ internal static class BossStonePerPlayerRuntime
         }
 
         RefreshAllBossStoneVisuals();
-        reason = $"applied key '{normalizedPlayerKey}'";
         return BossStoneSacrificeApplyResult.Applied;
     }
 
@@ -1059,18 +1044,6 @@ internal static class BossStonePerPlayerRuntime
         }
 
         return removed;
-    }
-
-    private static void CompletePendingBossStoneSacrificeRequest(
-        (long Sender, long RequestId) key,
-        string reason)
-    {
-        if (!PendingBossStoneSacrificeRequests.Remove(key))
-        {
-            return;
-        }
-
-        BossRulesDebugLog.Client($"Boss stone sacrifice request sender={key.Sender} request={key.RequestId}: {reason}.");
     }
 
     private static int GetOrientation(ItemStand itemStand)

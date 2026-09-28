@@ -10,11 +10,9 @@ internal static class DespawnRefundExecutor
     {
         if (refunds == null || refunds.Count == 0)
         {
-            BossRulesDebugLog.Client($"Despawn refund skipped at {BossRulesDebugLog.FormatVector3(centerPoint)}: no refunds.");
             return;
         }
 
-        BossRulesDebugLog.Client($"Despawn refund executing fallback={BossRulesDebugLog.FormatVector3(centerPoint)}: {BossRulesDebugLog.FormatRefunds(refunds)}.");
         foreach (DespawnRefundDrop refund in refunds)
         {
             if (refund == null || refund.Prefab == null || refund.Amount <= 0)

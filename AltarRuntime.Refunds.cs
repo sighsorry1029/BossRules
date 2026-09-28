@@ -42,7 +42,7 @@ internal static partial class AltarRuntime
         lock (Sync)
         {
             string refundPayload = ConsumePreparedOfferingRefundPayload(offeringBowl);
-            QueueOfferingBowlBossSpawnAttemptLocked(offeringBowl, spawnPoint, refundPayload, 0f, "started");
+            QueueOfferingBowlBossSpawnAttemptLocked(offeringBowl, spawnPoint, refundPayload, 0f);
         }
     }
 
@@ -58,8 +58,6 @@ internal static partial class AltarRuntime
             string refundPayload = BuildOfferingRefundPayload(offeringBowl);
             OfferingBowlRuntimeState state = GetOrAddOfferingBowlRuntimeState(offeringBowl);
             state.PendingRefundPayload = refundPayload;
-            BossRulesDebugLog.Client(
-                $"Altar refund prepared altar='{offeringBowl.name}' useItemStands={offeringBowl.m_useItemStands} payload='{FormatRefundPayloadForLog(refundPayload)}'.");
         }
     }
 
@@ -75,14 +73,11 @@ internal static partial class AltarRuntime
             string refundPayload = BuildOfferingRefundPayload(offeringBowl);
             OfferingBowlRuntimeState state = GetOrAddOfferingBowlRuntimeState(offeringBowl);
             state.PendingRefundPayload = refundPayload;
-            BossRulesDebugLog.Client(
-                $"Altar refund prepared altar='{offeringBowl.name}' useItemStands={offeringBowl.m_useItemStands} payload='{FormatRefundPayloadForLog(refundPayload)}'.");
             QueueOfferingBowlBossSpawnAttemptLocked(
                 offeringBowl,
                 spawnPoint,
                 refundPayload,
-                Math.Max(0f, offeringBowl.m_spawnBossDelay),
-                "queued");
+                Math.Max(0f, offeringBowl.m_spawnBossDelay));
         }
     }
 
@@ -122,8 +117,7 @@ internal static partial class AltarRuntime
         OfferingBowl offeringBowl,
         Vector3 spawnPoint,
         string refundPayload,
-        float extraLifetimeSeconds,
-        string verb)
+        float extraLifetimeSeconds)
     {
         string bossPrefabName = GetPrefabName(offeringBowl.m_bossPrefab);
         int bossPrefabHash = bossPrefabName.GetStableHashCode();
@@ -149,8 +143,6 @@ internal static partial class AltarRuntime
         };
         PendingAltarBossSpawns.Add(pending);
         _nextAltarSpawnMarkerRetryAt = 0f;
-        BossRulesDebugLog.Client(
-            $"Altar refund capture {verb} boss={bossPrefabName} useItemStands={offeringBowl.m_useItemStands} payload='{FormatRefundPayloadForLog(refundPayload)}' spawn={BossRulesDebugLog.FormatVector3(spawnPoint)} refundPoint={BossRulesDebugLog.FormatVector3(pending.RefundPoint)} expiresIn={(AltarSpawnMarkerRetrySeconds + Math.Max(0f, extraLifetimeSeconds)).ToString("0.###", CultureInfo.InvariantCulture)}s.");
     }
 
     internal static void ProcessPendingAltarSummonMarkers()
@@ -183,8 +175,6 @@ internal static partial class AltarRuntime
             if (now >= pending.ExpiresAt)
             {
                 PendingAltarBossSpawnRemovals.Add(pending);
-                BossRulesDebugLog.Client(
-                    $"Altar refund marker expired boss={pending.BossPrefabName} spawn={BossRulesDebugLog.FormatVector3(pending.SpawnPoint)} payload='{FormatRefundPayloadForLog(pending.RefundPayload)}'.");
                 continue;
             }
 
@@ -241,8 +231,6 @@ internal static partial class AltarRuntime
             }
         }
 
-        BossRulesDebugLog.Client(
-            $"Altar refund marker missed boss={pending.BossPrefabName} hash={pending.BossPrefabHash} spawn={BossRulesDebugLog.FormatVector3(pending.SpawnPoint)} payload='{FormatRefundPayloadForLog(pending.RefundPayload)}'.");
         return false;
     }
 
@@ -300,8 +288,6 @@ internal static partial class AltarRuntime
         zdo.Set(AltarSummonKey, true);
         zdo.Set(AltarRefundsKey, pending.RefundPayload);
         zdo.Set(AltarRefundPointKey, SerializeVector3(pending.RefundPoint));
-        BossRulesDebugLog.Client(
-            $"Altar refund marker applied on created ZDO boss={pending.BossPrefabName} zdo={zdo.m_uid} payload='{FormatRefundPayloadForLog(pending.RefundPayload)}' refundPoint={BossRulesDebugLog.FormatVector3(pending.RefundPoint)}.");
         return true;
     }
 
@@ -339,8 +325,6 @@ internal static partial class AltarRuntime
             string characterPrefabName = GetPrefabName(character.gameObject);
             if (!string.Equals(characterPrefabName, pending.BossPrefabName, StringComparison.OrdinalIgnoreCase))
             {
-                BossRulesDebugLog.Client(
-                    $"Altar refund marker skipped prefab mismatch expected={pending.BossPrefabName} actual={characterPrefabName} zdo={zdo.m_uid}.");
                 return false;
             }
         }
@@ -348,8 +332,6 @@ internal static partial class AltarRuntime
         Vector3 position = character.GetCenterPoint();
         if (Vector3.SqrMagnitude(position - pending.SpawnPoint) > AltarSpawnMarkerMaxDistanceSquared)
         {
-            BossRulesDebugLog.Client(
-                $"Altar refund marker skipped distance boss={pending.BossPrefabName} zdo={zdo.m_uid} position={BossRulesDebugLog.FormatVector3(position)} spawn={BossRulesDebugLog.FormatVector3(pending.SpawnPoint)}.");
             return false;
         }
 
@@ -357,8 +339,6 @@ internal static partial class AltarRuntime
         zdo.Set(AltarRefundsKey, pending.RefundPayload);
         zdo.Set(AltarRefundPointKey, SerializeVector3(pending.RefundPoint));
         DespawnRulesManager.TryTrackLoadedDespawnTarget(character);
-        BossRulesDebugLog.Client(
-            $"Altar refund marker applied boss={pending.BossPrefabName} zdo={zdo.m_uid} payload='{FormatRefundPayloadForLog(pending.RefundPayload)}' refundPoint={BossRulesDebugLog.FormatVector3(pending.RefundPoint)}.");
         return true;
     }
 
@@ -375,7 +355,6 @@ internal static partial class AltarRuntime
         string payload = zdo.GetString(AltarRefundsKey, "");
         if (string.IsNullOrWhiteSpace(payload))
         {
-            BossRulesDebugLog.Client($"Altar refund resolve skipped for zdo={zdo.m_uid}: altar summon marker exists but payload is empty.");
             return false;
         }
 
@@ -386,10 +365,6 @@ internal static partial class AltarRuntime
             if (TryDeserializeVector3(refundPointPayload, out Vector3 parsedRefundPoint))
             {
                 refundPoint = parsedRefundPoint;
-            }
-            else
-            {
-                BossRulesDebugLog.Client($"Altar refund point ignored for zdo={zdo.m_uid}: invalid payload='{refundPointPayload}'.");
             }
         }
 
@@ -417,36 +392,23 @@ internal static partial class AltarRuntime
         }
 
         refunds = resolvedRefunds;
-        BossRulesDebugLog.Client(
-            $"Altar refund resolved for zdo={zdo.m_uid}: payload='{FormatRefundPayloadForLog(payload)}' refundPoint={(refundPoint.HasValue ? BossRulesDebugLog.FormatVector3(refundPoint.Value) : "<despawn position>")} resolved={BossRulesDebugLog.FormatRefunds(resolvedRefunds)}.");
         return resolvedRefunds.Count > 0;
     }
 
     private static string BuildOfferingRefundPayload(OfferingBowl offeringBowl)
     {
         Dictionary<string, int> refunds = new(StringComparer.OrdinalIgnoreCase);
-        int scanned = 0;
-        int attached = 0;
-        string directItemName = "";
-        int directAmount = 0;
         if (offeringBowl.m_useItemStands)
         {
             foreach (ItemStand itemStand in AltarItemStandHoverInfoFormatter.FindRelevantItemStands(offeringBowl))
             {
-                scanned++;
                 if (itemStand == null || !TryGetAttachedItemName(itemStand, out string attachedItem))
                 {
-                    if (BossRulesDebugLog.IsClientEnabled)
-                    {
-                        BossRulesDebugLog.Client(
-                            $"Altar refund item stand scan found no attachment stand='{(itemStand != null ? itemStand.name : "<null>")}' altar='{offeringBowl.name}'.");
-                    }
                     continue;
                 }
 
                 if (attachedItem.Length > 0)
                 {
-                    attached++;
                     AddRefund(refunds, attachedItem, 1);
                 }
             }
@@ -456,28 +418,11 @@ internal static partial class AltarRuntime
             string itemName = NormalizeReferencePrefabName(offeringBowl.m_bossItem.gameObject) ?? "";
             if (itemName.Length > 0)
             {
-                directItemName = itemName;
-                directAmount = Math.Max(1, offeringBowl.m_bossItems);
-                AddRefund(refunds, directItemName, directAmount);
+                AddRefund(refunds, itemName, Math.Max(1, offeringBowl.m_bossItems));
             }
         }
 
-        string payload = SerializeRefundPayload(refunds);
-        if (BossRulesDebugLog.IsClientEnabled)
-        {
-            if (offeringBowl.m_useItemStands)
-            {
-                BossRulesDebugLog.Client(
-                    $"Altar refund item stand scan altar='{offeringBowl.name}' scanned={scanned} attached={attached} payload='{FormatRefundPayloadForLog(payload)}'.");
-            }
-            else if (offeringBowl.m_bossItem != null)
-            {
-                BossRulesDebugLog.Client(
-                    $"Altar refund direct offering altar='{offeringBowl.name}' item={directItemName} amount={directAmount} payload='{FormatRefundPayloadForLog(payload)}'.");
-            }
-        }
-
-        return payload;
+        return SerializeRefundPayload(refunds);
     }
 
     private static string ConsumePreparedOfferingRefundPayload(OfferingBowl offeringBowl)
@@ -487,15 +432,10 @@ internal static partial class AltarRuntime
         if (preparedPayload != null)
         {
             state!.PendingRefundPayload = null;
-            BossRulesDebugLog.Client(
-                $"Altar refund using prepared payload altar='{offeringBowl.name}' payload='{FormatRefundPayloadForLog(preparedPayload)}'.");
             return preparedPayload;
         }
 
-        string fallbackPayload = BuildOfferingRefundPayload(offeringBowl);
-        BossRulesDebugLog.Client(
-            $"Altar refund using delayed fallback payload altar='{offeringBowl.name}' payload='{FormatRefundPayloadForLog(fallbackPayload)}'.");
-        return fallbackPayload;
+        return BuildOfferingRefundPayload(offeringBowl);
     }
 
     private static string SerializeRefundPayload(Dictionary<string, int> refunds)
@@ -534,11 +474,6 @@ internal static partial class AltarRuntime
 
         value = new Vector3(x, y, z);
         return true;
-    }
-
-    private static string FormatRefundPayloadForLog(string? payload)
-    {
-        return string.IsNullOrWhiteSpace(payload) ? "<empty>" : payload!;
     }
 
     private static bool TryGetAttachedItemName(ItemStand itemStand, out string itemName)

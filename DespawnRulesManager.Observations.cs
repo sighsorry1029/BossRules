@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using UnityEngine;
 
 namespace BossRules;
@@ -413,8 +412,6 @@ internal static partial class DespawnRulesManager
         }
 
         PrimeTrackedDespawnInterestIfNeeded(state, interestPoint);
-        BossRulesDebugLog.Client(
-            $"Despawn tracking resolved prefab={prefabName} zdo={zdo.m_uid} loaded={loadedCharacter != null} range={(rangeOverride.HasValue ? rangeOverride.Value.ToString("0.##", CultureInfo.InvariantCulture) : "<default>")} delay={(delayOverride.HasValue ? delayOverride.Value.ToString("0.##", CultureInfo.InvariantCulture) : "<default>")} refunds={BossRulesDebugLog.FormatRefunds(refunds)}.");
         ScheduleTrackedDespawnCheck(zdo.m_uid, state, GetCurrentDespawnClockSeconds());
         return state;
     }

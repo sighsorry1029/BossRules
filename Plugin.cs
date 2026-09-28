@@ -441,13 +441,11 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
     private bool ApplyAltarYaml(string yaml, string source)
     {
         string content = yaml ?? "";
-        BossRulesDebugLog.Client($"Applying altar YAML source={source} bytes={content.Length}.");
         if (!AltarConfiguration.TryParse(content, source, out IReadOnlyList<AltarConfigurationEntry> entries))
         {
             return false;
         }
 
-        BossRulesDebugLog.Client($"Parsed altar YAML source={source} entries={entries.Count}.");
         AltarRuntime.Reload(entries);
         return true;
     }

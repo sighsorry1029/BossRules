@@ -16,7 +16,6 @@ internal static partial class AltarRuntime
     private static readonly Dictionary<Room, DungeonGenerator> PendingQueenDungeonRooms = new();
     private static readonly Dictionary<string, List<AuthoredItemStandSlotTemplate>> AuthoredItemStandSlotsByPrefab = new(StringComparer.OrdinalIgnoreCase);
     private static bool _pendingGameDataReapply;
-    private static bool _loggedPendingGameDataWait;
     private static int _configurationGeneration;
     private static float _nextQueenDungeonRoomContextRetryAt;
 
@@ -37,7 +36,6 @@ internal static partial class AltarRuntime
             AltarItemStandHoverInfoFormatter.ClearRuntimeCaches();
             OfferingBowlHoverInfoFormatter.ClearRuntimeCaches();
             _pendingGameDataReapply = true;
-            _loggedPendingGameDataWait = false;
             foreach (AltarConfigurationEntry entry in entries)
             {
                 if (!entry.Enabled ||
@@ -56,8 +54,6 @@ internal static partial class AltarRuntime
                 bucket.Add(entry);
             }
 
-            BossRulesDebugLog.Client(
-                $"Altar reload entries={entries.Count} activePrefabs={ActiveEntriesByPrefab.Count} gameDataReady={IsGameDataReady()} registeredLocations={RegisteredLocationPrefabs.Count}.");
             ReapplyRegisteredLocationsLocked();
             ReapplyRegisteredQueenDungeonOfferingBowlsLocked();
         }
@@ -99,7 +95,6 @@ internal static partial class AltarRuntime
             AltarLocationResolver.ResetRuntimeState();
             QueenDungeonAltarSupport.ResetRuntimeState();
             _pendingGameDataReapply = false;
-            _loggedPendingGameDataWait = false;
         }
     }
 
@@ -114,19 +109,10 @@ internal static partial class AltarRuntime
 
             if (!IsGameDataReady())
             {
-                if (!_loggedPendingGameDataWait)
-                {
-                    _loggedPendingGameDataWait = true;
-                    BossRulesDebugLog.Client($"Altar deferred reapply waiting for game data. {DescribeGameDataState()}");
-                }
-
                 return;
             }
 
             _pendingGameDataReapply = false;
-            _loggedPendingGameDataWait = false;
-            BossRulesDebugLog.Client(
-                $"Altar deferred reapply running. {DescribeGameDataState()} registeredLocations={RegisteredLocationPrefabs.Count} activePrefabs={ActiveEntriesByPrefab.Count}.");
             ReapplyRegisteredLocationsLocked();
             ReapplyRegisteredQueenDungeonOfferingBowlsLocked();
             ReapplyLoadedLooseOfferingBowlsLocked();
@@ -154,12 +140,10 @@ internal static partial class AltarRuntime
         {
             if (!AltarLocationResolver.TryResolveLocationPrefabName(location, out string prefabName))
             {
-                BossRulesDebugLog.Client($"Altar register location skipped: prefab unresolved location={location.name}.");
                 return;
             }
 
             RegisteredLocationPrefabs[location] = prefabName;
-            BossRulesDebugLog.Client($"Altar registered location prefab={prefabName} location={location.name}.");
             ReconcileRootLocked(location.transform, prefabName);
         }
     }
@@ -216,8 +200,6 @@ internal static partial class AltarRuntime
                     out normalizedPrefab))
             {
                 PendingQueenDungeonRooms[room] = generator;
-                BossRulesDebugLog.Client(
-                    $"Queen dungeon altar room pending context room={room.name} generator={generator.name}.");
                 return;
             }
 
@@ -286,8 +268,6 @@ internal static partial class AltarRuntime
         }
 
         RegisteredQueenDungeonOfferingBowls[offeringBowls[0]] = prefabName;
-        BossRulesDebugLog.Client(
-            $"Queen dungeon altar registered prefab={prefabName} room={room.name} bowl={offeringBowls[0].name}.");
         ReconcileRootLocked(offeringBowls[0].transform, prefabName);
     }
 
@@ -300,12 +280,6 @@ internal static partial class AltarRuntime
             {
                 RegisteredLocationPrefabs[location] = prefabName;
             }
-        }
-
-        if (locations.Length > 0)
-        {
-            BossRulesDebugLog.Client(
-                $"Altar refreshed spawned location prefab cache prefab={prefabName} root={root.name} locations={locations.Length}.");
         }
     }
 
@@ -340,17 +314,7 @@ internal static partial class AltarRuntime
 
             if (!AltarLocationResolver.TryResolveOfferingBowlContext(offeringBowl, out string prefabName, out Transform root))
             {
-                if (BossRulesDebugLog.IsClientEnabled)
-                {
-                    BossRulesDebugLog.Client($"Altar loose offering bowl skipped: context unresolved bowl={offeringBowl.name}.");
-                }
-
                 return;
-            }
-
-            if (BossRulesDebugLog.IsClientEnabled)
-            {
-                BossRulesDebugLog.Client($"Altar loose offering bowl context prefab={prefabName} root={root.name} bowl={offeringBowl.name}.");
             }
 
             if (IsOfferingBowlReconcileCurrent(offeringBowl, root, prefabName))
@@ -476,7 +440,6 @@ internal static partial class AltarRuntime
 
     private static void ReapplyRegisteredLocationsLocked()
     {
-        BossRulesDebugLog.Client($"Altar reapply registered locations count={RegisteredLocationPrefabs.Count}.");
         foreach (KeyValuePair<Location, string> pair in RegisteredLocationPrefabs.ToList())
         {
             Location location = pair.Key;
@@ -508,12 +471,8 @@ internal static partial class AltarRuntime
 
     private static void ReapplyLoadedLooseOfferingBowlsLocked()
     {
-        int scanned = 0;
-        int applied = 0;
-        int unresolved = 0;
         foreach (OfferingBowl offeringBowl in UnityEngine.Object.FindObjectsByType<OfferingBowl>(FindObjectsSortMode.None))
         {
-            scanned++;
             if (offeringBowl == null || offeringBowl.GetComponentInParent<Location>(true) != null)
             {
                 continue;
@@ -526,32 +485,17 @@ internal static partial class AltarRuntime
 
             if (AltarLocationResolver.TryResolveOfferingBowlContext(offeringBowl, out string prefabName, out Transform root))
             {
-                applied++;
                 ReconcileRootLocked(root, prefabName);
             }
-            else
-            {
-                unresolved++;
-            }
         }
-
-        BossRulesDebugLog.Client($"Altar reapply loose offering bowls scanned={scanned} applied={applied} unresolved={unresolved}.");
     }
 
     private static void ReapplyLoadedLooseItemStandsLocked()
     {
-        int scanned = 0;
-        int applied = 0;
         foreach (ItemStand itemStand in UnityEngine.Object.FindObjectsByType<ItemStand>(FindObjectsSortMode.None))
         {
-            scanned++;
-            if (ReconcileLooseItemStandLocked(itemStand))
-            {
-                applied++;
-            }
+            ReconcileLooseItemStandLocked(itemStand);
         }
-
-        BossRulesDebugLog.Client($"Altar reapply loose item stands scanned={scanned} applied={applied}.");
     }
 
     private static bool ReconcileLooseItemStandLocked(ItemStand? itemStand)
@@ -564,7 +508,6 @@ internal static partial class AltarRuntime
         if (!AltarItemStandHoverInfoFormatter.TryGetRelevantOfferingBowl(itemStand, out OfferingBowl? offeringBowl) ||
             offeringBowl == null)
         {
-            BossRulesDebugLog.Client($"Altar loose itemStand skipped: offeringBowl unresolved stand={itemStand.name}.");
             return false;
         }
 
@@ -579,23 +522,19 @@ internal static partial class AltarRuntime
 
             if (string.IsNullOrWhiteSpace(prefabName))
             {
-                BossRulesDebugLog.Client($"Altar loose itemStand skipped: location prefab unresolved stand={itemStand.name} bowl={offeringBowl.name}.");
                 return false;
             }
 
-            BossRulesDebugLog.Client($"Altar loose itemStand reapplying location prefab={prefabName} stand={itemStand.name} bowl={offeringBowl.name}.");
             ReconcileRootLocked(location.transform, prefabName);
             return true;
         }
 
         if (AltarLocationResolver.TryResolveOfferingBowlContext(offeringBowl, out string loosePrefabName, out Transform root))
         {
-            BossRulesDebugLog.Client($"Altar loose itemStand reapplying loose root prefab={loosePrefabName} stand={itemStand.name} bowl={offeringBowl.name}.");
             ReconcileRootLocked(root, loosePrefabName);
             return true;
         }
 
-        BossRulesDebugLog.Client($"Altar loose itemStand skipped: context unresolved stand={itemStand.name} bowl={offeringBowl.name}.");
         return false;
     }
 
@@ -615,7 +554,6 @@ internal static partial class AltarRuntime
         if (!IsGameDataReady())
         {
             _pendingGameDataReapply = true;
-            BossRulesDebugLog.Client($"Altar reconcile deferred prefab={normalizedPrefab} root={root.name}. {DescribeGameDataState()}");
             return;
         }
 
@@ -628,15 +566,11 @@ internal static partial class AltarRuntime
         if (!BossRulesConfig.IsAltarRulesEnabled() ||
             !ActiveEntriesByPrefab.TryGetValue(normalizedPrefab, out List<AltarConfigurationEntry>? entries))
         {
-            BossRulesDebugLog.Client(
-                $"Altar reconcile restore-only prefab={normalizedPrefab} root={root.name} enabled={BossRulesConfig.IsAltarRulesEnabled()} configured={ActiveEntriesByPrefab.ContainsKey(normalizedPrefab)} bowls={offeringBowls.Length} childItemStands={childItemStands.Length}.");
             MarkOfferingBowlsReconciled(offeringBowls, root, normalizedPrefab);
             return;
         }
 
         Dictionary<string, ItemStand> childItemStandsByPath = BuildItemStandLookup(root, childItemStands);
-        BossRulesDebugLog.Client(
-            $"Altar reconcile applying prefab={normalizedPrefab} root={root.name} entries={entries.Count} bowls={offeringBowls.Length} childItemStands={childItemStands.Length} childPaths={childItemStandsByPath.Count} offeringBowl={(offeringBowl != null ? offeringBowl.name : "<none>")}.");
 
         foreach (AltarConfigurationEntry entry in entries)
         {
@@ -659,7 +593,7 @@ internal static partial class AltarRuntime
             if (entry.ItemStands is { Count: > 0 })
             {
                 List<ItemStand> relevantItemStands = GetRelevantItemStands(entryOfferingBowl, childItemStands);
-                ApplyConfiguredItemStands(entry.ItemStands, relevantItemStands, childItemStandsByPath, normalizedPrefab, root, entryOfferingBowl);
+                ApplyConfiguredItemStands(entry.ItemStands, relevantItemStands, childItemStandsByPath, normalizedPrefab, entryOfferingBowl);
             }
         }
 
@@ -703,8 +637,6 @@ internal static partial class AltarRuntime
                 StringComparison.Ordinal));
         if (selectedOfferingBowl != null)
         {
-            BossRulesDebugLog.Client(
-                $"Altar offeringBowl exact path match prefab={prefabName} path='{path}' bowl={selectedOfferingBowl.name}.");
             return true;
         }
 
@@ -771,14 +703,6 @@ internal static partial class AltarRuntime
         return ZoneSystem.instance != null &&
                ObjectDB.instance?.m_items is { Count: > 0 } &&
                ZNetScene.instance?.m_prefabs is { Count: > 0 };
-    }
-
-    private static string DescribeGameDataState()
-    {
-        string zoneSystemState = ZoneSystem.instance != null ? "ready" : "null";
-        int objectDbItems = ObjectDB.instance?.m_items?.Count ?? -1;
-        int znetScenePrefabs = ZNetScene.instance?.m_prefabs?.Count ?? -1;
-        return $"ZoneSystem={zoneSystemState} ObjectDB.items={objectDbItems} ZNetScene.prefabs={znetScenePrefabs}";
     }
 
     // Snapshot/restore keeps live altar edits reversible across reloads.
@@ -942,8 +866,6 @@ internal static partial class AltarRuntime
         OfferingBowlRuntimeState state = GetOrAddOfferingBowlRuntimeState(offeringBowl);
         state.Applied = true;
         state.RespawnMinutes = entry.RespawnMinutes.HasValue ? Mathf.Max(0f, entry.RespawnMinutes.Value) : 0f;
-        BossRulesDebugLog.Client(
-            $"Altar offeringBowl applied context={context} bossPrefab={(offeringBowl.m_bossPrefab != null ? GetPrefabName(offeringBowl.m_bossPrefab) : "<null>")} useItemStands={offeringBowl.m_useItemStands} prefix='{offeringBowl.m_itemStandPrefix}' maxRange={offeringBowl.m_itemstandMaxRange:0.##} respawnMinutes={state.RespawnMinutes:0.##}.");
     }
 
     private static void ApplyConfiguredItemStands(
@@ -951,7 +873,6 @@ internal static partial class AltarRuntime
         IReadOnlyList<ItemStand> relevantItemStands,
         Dictionary<string, ItemStand> childItemStandsByPath,
         string prefabName,
-        Transform root,
         OfferingBowl? offeringBowl)
     {
         HashSet<int> exactMatchedItemStandIds = new();
@@ -965,7 +886,7 @@ internal static partial class AltarRuntime
             {
                 foreach (ItemStand relevantItemStand in relevantItemStands)
                 {
-                    ApplyItemStand(relevantItemStand, definition, prefabName, root);
+                    ApplyItemStand(relevantItemStand, definition, prefabName);
                 }
 
                 continue;
@@ -976,8 +897,7 @@ internal static partial class AltarRuntime
             {
                 exactMatchedItemStandIds.Add(matchedItemStand.GetInstanceID());
                 CaptureAuthoredItemStandSlot(prefabName, path, matchedItemStand, offeringBowl);
-                BossRulesDebugLog.Client($"Altar itemStand exact path match prefab={prefabName} path='{path}' stand={matchedItemStand.name}.");
-                ApplyItemStand(matchedItemStand, definition, prefabName, root);
+                ApplyItemStand(matchedItemStand, definition, prefabName);
                 continue;
             }
 
@@ -1026,12 +946,11 @@ internal static partial class AltarRuntime
             }
 
             unresolvedPaths.Remove(path);
-            BossRulesDebugLog.Client($"Altar itemStand authored path remap prefab={prefabName} path='{path}' stand={mappedItemStand.name}.");
-            ApplyItemStand(mappedItemStand, definition, prefabName, root);
+            ApplyItemStand(mappedItemStand, definition, prefabName);
         }
     }
 
-    private static void ApplyItemStand(ItemStand itemStand, AltarItemStandDefinition entry, string prefabName, Transform root)
+    private static void ApplyItemStand(ItemStand itemStand, AltarItemStandDefinition entry, string prefabName)
     {
         string context = string.IsNullOrWhiteSpace(entry.Path)
             ? $"{prefabName}@itemStands"
@@ -1065,15 +984,11 @@ internal static partial class AltarRuntime
         {
             resolvedSupportedItems = ResolveItemDropList(entry.SupportedItems, $"{context}/supportedItems");
             itemStand.m_supportedItems = resolvedSupportedItems;
-            BossRulesDebugLog.Client(
-                $"Altar itemStand supportedItems resolved context={context} requested=[{FormatNames(entry.SupportedItems)}] resolved=[{FormatItemDrops(resolvedSupportedItems)}].");
         }
 
         if (entry.UnsupportedItems != null)
         {
             itemStand.m_unsupportedItems = ResolveItemDropList(entry.UnsupportedItems, $"{context}/unsupportedItems");
-            BossRulesDebugLog.Client(
-                $"Altar itemStand unsupportedItems resolved context={context} requested=[{FormatNames(entry.UnsupportedItems)}] resolved=[{FormatItemDrops(itemStand.m_unsupportedItems)}].");
         }
         else if (resolvedSupportedItems != null)
         {
@@ -1091,8 +1006,6 @@ internal static partial class AltarRuntime
         }
 
         state.Applied = true;
-        BossRulesDebugLog.Client(
-            $"Altar itemStand applied context={context} stand={itemStand.name} path='{GetRelativePath(root, itemStand.transform)}' autoAttach={itemStand.m_autoAttach} supported=[{FormatItemDrops(itemStand.m_supportedItems)}] unsupported=[{FormatItemDrops(itemStand.m_unsupportedItems)}] applied={state.Applied}.");
     }
 
     private static List<ItemStand> GetRelevantItemStands(OfferingBowl? offeringBowl, IEnumerable<ItemStand> childItemStands)
@@ -1192,8 +1105,6 @@ internal static partial class AltarRuntime
             templates.Count == 0 ||
             relevantItemStands.Count == 0)
         {
-            BossRulesDebugLog.Client(
-                $"Altar authored path remap skipped prefab={normalizedPrefab} templates={(AuthoredItemStandSlotsByPrefab.TryGetValue(normalizedPrefab, out List<AuthoredItemStandSlotTemplate>? existingTemplates) ? existingTemplates.Count : 0)} relevant={relevantItemStands.Count}.");
             return authoredPathsByItemStand;
         }
 
@@ -1213,8 +1124,6 @@ internal static partial class AltarRuntime
             }
         }
 
-        BossRulesDebugLog.Client(
-            $"Altar authored path remap candidates prefab={normalizedPrefab} templates={templates.Count} relevant={relevantItemStands.Count} candidates={candidates.Count}.");
         candidates.Sort((left, right) => left.Distance.CompareTo(right.Distance));
         HashSet<int> assignedItemStandIds = new();
         HashSet<string> assignedPaths = new(StringComparer.Ordinal);
@@ -1229,7 +1138,6 @@ internal static partial class AltarRuntime
             authoredPathsByItemStand[itemStand] = template.Path;
             assignedItemStandIds.Add(itemStandId);
             assignedPaths.Add(template.Path);
-            BossRulesDebugLog.Client($"Altar authored path assigned prefab={normalizedPrefab} path='{template.Path}' stand={itemStand.name}.");
         }
 
         return authoredPathsByItemStand;
@@ -1347,26 +1255,6 @@ internal static partial class AltarRuntime
         ZNetView? view = offeringBowl.GetComponentInParent<ZNetView>();
         ZDO? zdo = view?.IsValid() == true ? view.GetZDO() : null;
         return zdo?.GetLong(OfferingBowlLastUseTicksKey, 0L) ?? 0L;
-    }
-
-    private static string FormatNames(IEnumerable<string>? names)
-    {
-        return names == null ? "" : string.Join(",", names.Where(name => !string.IsNullOrWhiteSpace(name)));
-    }
-
-    private static string FormatItemDrops(IEnumerable<ItemDrop>? itemDrops)
-    {
-        if (itemDrops == null)
-        {
-            return "";
-        }
-
-        return string.Join(
-            ",",
-            itemDrops
-                .Where(itemDrop => itemDrop != null)
-                .Select(itemDrop => NormalizeReferencePrefabName(itemDrop.gameObject) ?? itemDrop.name ?? "")
-                .Where(name => name.Length > 0));
     }
 
     // Prefab and ItemStand value resolution.

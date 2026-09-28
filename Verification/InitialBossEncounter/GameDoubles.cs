@@ -78,7 +78,6 @@ namespace BossRules
 {
     internal static class BossRulesPlugin { internal const string ModName = "BossRules"; }
     internal static class AltarRuntime { internal static bool IsAltarSummoned(ZDO zdo) => zdo.Altar; }
-    internal static class BossRulesDebugLog { internal static void Client(string text) { } }
     internal static class BossRulesRuntime
     {
         internal static float Range = 64;

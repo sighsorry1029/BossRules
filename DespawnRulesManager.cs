@@ -377,8 +377,6 @@ internal static partial class DespawnRulesManager
         if (elapsedSeconds >= despawnDelaySeconds)
         {
             IReadOnlyCollection<DespawnRefundDrop> refunds = ResolveRefundsForExecution(zdo, state);
-            BossRulesDebugLog.Client(
-                $"Despawn executing prefab={state.PrefabName} zdo={zdoId} refunds={BossRulesDebugLog.FormatRefunds(refunds)} position={BossRulesDebugLog.FormatVector3(probePoint)}.");
             DespawnRefundExecutor.ExecuteRefunds(probePoint, refunds);
             ApplyDespawnCleanupBeforeDestroy(zdo);
             zdo.SetOwner(ZDOMan.GetSessionID());
