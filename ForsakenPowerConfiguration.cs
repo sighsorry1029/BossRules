@@ -94,7 +94,7 @@ internal static class ForsakenPowerConfigurationFiles
                             #
                             # Schema:
                             # - effect: GP_Eikthyr                  # GP_Eikthyr => override that Forsaken Power StatusEffect.
-                            #   time: 18, 60                        # 18, 60 => lasts 18s, then cannot reapply for 60s.
+                            #   time: 31, 120                       # 31, 120 => duration 31s, cooldown 120s.
                             #   attributes: None                    # SailingPower => grant that StatusAttribute flag.
                             #   stats:
                             #     regenMultiplier: 1, 1, 1          # 1.5, 0.5, 0 => health regen +50%, stamina regen x0.5, eitr regen disabled.
@@ -144,7 +144,7 @@ internal static class ForsakenPowerConfigurationFiles
                             #     spirit: 0                         # 0.25 => spirit damage modifier +25%.
                             #
                             - effect: GP_Eikthyr
-                              time: 16, 60
+                              time: 31, 120
                               percentageDamageModifiers:
                                 Pickaxe: 0.5
                               staminaDrainModifier:
@@ -155,7 +155,7 @@ internal static class ForsakenPowerConfigurationFiles
                               damageTakenModifiers:
                                 Blunt: SlightlyResistant
                             - effect: GP_TheElder
-                              time: 16, 60
+                              time: 31, 120
                               percentageDamageModifiers:
                                 Chop: 0.5
                               staminaDrainModifier:
@@ -166,7 +166,7 @@ internal static class ForsakenPowerConfigurationFiles
                               damageTakenModifiers:
                                 Poison: SlightlyResistant
                             - effect: GP_Bonemass
-                              time: 16, 60
+                              time: 31, 120
                               staminaDrainModifier:
                                 block: -0.5
                               stats:
@@ -175,7 +175,7 @@ internal static class ForsakenPowerConfigurationFiles
                               damageTakenModifiers:
                                 Frost: SlightlyResistant
                             - effect: GP_Moder
-                              time: 16, 60
+                              time: 31, 120
                               attributes: SailingPower
                               staminaDrainModifier:
                                 jump: -0.5
@@ -187,7 +187,7 @@ internal static class ForsakenPowerConfigurationFiles
                               damageTakenModifiers:
                                 Fire: SlightlyResistant
                             - effect: GP_Yagluth
-                              time: 16, 60
+                              time: 31, 120
                               percentageDamageModifiers:
                                 Fire: 0.1
                                 Poison: 0.1
@@ -199,7 +199,7 @@ internal static class ForsakenPowerConfigurationFiles
                               damageTakenModifiers:
                                 Pierce: SlightlyResistant
                             - effect: GP_Queen
-                              time: 16, 60
+                              time: 31, 120
                               percentageDamageModifiers:
                                 Pierce: 0.1
                                 Blunt: 0.1
@@ -209,7 +209,7 @@ internal static class ForsakenPowerConfigurationFiles
                               damageTakenModifiers:
                                 Slash: SlightlyResistant
                             - effect: GP_Fader
-                              time: 16, 60
+                              time: 31, 120
                               stats:
                                 adrenalineModifier: 1
                                 staggerModifier: -0.5

@@ -141,13 +141,13 @@ BossRules can rebalance selected `SE_Stats` fields for Forsaken Powers:
 
 ```yaml
 - effect: GP_Eikthyr
-  time: 18, 60
+  time: 31, 120
   staminaDrainModifier:
     run: -0.5
     jump: -0.5
 
 - effect: GP_Moder
-  time: 18, 60
+  time: 31, 120
   attributes: SailingPower
   stats:
     speedModifier: 0.1
@@ -160,15 +160,17 @@ Modifier values use Valheim/DataForge-style factors. For example, `-0.5` means 5
 
 The table below compares vanilla `GP_` effect rows from DataForge `effects.reference.yml` with the BossRules preset in `BossRules.forsakenPowers.yml`.
 
+All seven default powers use `time: 31, 120`: 31 seconds of duration and a 120-second cooldown. Existing YAML files are preserved; edit their `time` entries to adopt these defaults.
+
 | Effect | Vanilla effect | BossRules effect |
 | --- | --- | --- |
-| `GP_Eikthyr` | `time: 300, 1200`<br>Stamina drain: run/jump/swim `-0.6` | `time: 16, 60`<br>Pickaxe damage `0.5`<br>Stamina drain: run/dodge `-0.5`<br>Speed `0.1`<br>Blunt: `SlightlyResistant` |
-| `GP_TheElder` | `time: 300, 1200`<br>Regen `1.3, 1, 1`<br>Chop/pickaxe damage `0.6` | `time: 16, 60`<br>Chop damage `0.5`<br>Stamina drain: swim/sneak `-0.5`<br>Regen `2, 1, 1`<br>Poison: `SlightlyResistant` |
-| `GP_Bonemass` | `time: 300, 1200`<br>Block `0, -5`<br>Block stamina drain `-1`<br>Blunt/slash/pierce: `SlightlyResistant` | `time: 16, 60`<br>Block stamina drain `-0.5`<br>Block `0, -5`<br>Armor `20, 0.2`<br>Frost: `SlightlyResistant` |
-| `GP_Moder` | `time: 300, 1200`<br>`SailingPower`<br>Speed `0.1`<br>Carry weight `300`<br>Frost: `Resistant` | `time: 16, 60`<br>`SailingPower`<br>Stamina drain: jump `-0.5`<br>Carry weight `300`<br>Jump `0, 0.2, 0`<br>Farming/Fishing skill `25`<br>Fire: `SlightlyResistant` |
-| `GP_Yagluth` | `time: 300, 1200`<br>Farming skill `25`<br>Lightning: `Resistant`<br>Blunt/slash/pierce/chop/pickaxe/fire/frost/lightning/poison/spirit damage `0.1` | `time: 16, 60`<br>Fire/poison/frost/lightning/spirit damage `0.1`<br>Regen `1, 1, 2`<br>Pierce: `SlightlyResistant` |
-| `GP_Queen` | `time: 300, 1200`<br>Regen `1, 1, 2`<br>Sneak stamina drain `-1`<br>Poison: `Resistant` | `time: 16, 60`<br>Pierce/blunt/slash damage `0.1`<br>Attack stamina drain `-0.1`<br>Slash: `SlightlyResistant` |
-| `GP_Fader` | `time: 300, 1200`<br>Adrenaline `1`<br>Stagger `-0.5`<br>Attack damage `None, 0`<br>Fire: `Resistant` | `time: 16, 60`<br>Adrenaline `1`<br>Stagger `-0.5`<br>Lightning: `SlightlyResistant` |
+| `GP_Eikthyr` | `time: 300, 1200`<br>Stamina drain: run/jump/swim `-0.6` | `time: 31, 120`<br>Pickaxe damage `0.5`<br>Stamina drain: run/dodge `-0.5`<br>Speed `0.1`<br>Blunt: `SlightlyResistant` |
+| `GP_TheElder` | `time: 300, 1200`<br>Regen `1.3, 1, 1`<br>Chop/pickaxe damage `0.6` | `time: 31, 120`<br>Chop damage `0.5`<br>Stamina drain: swim/sneak `-0.5`<br>Regen `2, 1, 1`<br>Poison: `SlightlyResistant` |
+| `GP_Bonemass` | `time: 300, 1200`<br>Block `0, -5`<br>Block stamina drain `-1`<br>Blunt/slash/pierce: `SlightlyResistant` | `time: 31, 120`<br>Block stamina drain `-0.5`<br>Block `0, -5`<br>Armor `20, 0.2`<br>Frost: `SlightlyResistant` |
+| `GP_Moder` | `time: 300, 1200`<br>`SailingPower`<br>Speed `0.1`<br>Carry weight `300`<br>Frost: `Resistant` | `time: 31, 120`<br>`SailingPower`<br>Stamina drain: jump `-0.5`<br>Carry weight `300`<br>Jump `0, 0.2, 0`<br>Farming/Fishing skill `25`<br>Fire: `SlightlyResistant` |
+| `GP_Yagluth` | `time: 300, 1200`<br>Farming skill `25`<br>Lightning: `Resistant`<br>Blunt/slash/pierce/chop/pickaxe/fire/frost/lightning/poison/spirit damage `0.1` | `time: 31, 120`<br>Fire/poison/frost/lightning/spirit damage `0.1`<br>Regen `1, 1, 2`<br>Pierce: `SlightlyResistant` |
+| `GP_Queen` | `time: 300, 1200`<br>Regen `1, 1, 2`<br>Sneak stamina drain `-1`<br>Poison: `Resistant` | `time: 31, 120`<br>Pierce/blunt/slash damage `0.1`<br>Attack stamina drain `-0.1`<br>Slash: `SlightlyResistant` |
+| `GP_Fader` | `time: 300, 1200`<br>Adrenaline `1`<br>Stagger `-0.5`<br>Attack damage `None, 0`<br>Fire: `Resistant` | `time: 31, 120`<br>Adrenaline `1`<br>Stagger `-0.5`<br>Lightning: `SlightlyResistant` |
 
 ## Boss Stones
 
