@@ -114,6 +114,13 @@ internal static class OfferingBowlHoverInfoFormatter
     {
         if (offeringBowl.m_bossPrefab != null)
         {
+            // This opens the Frozen King gate; it is an effect, not a displayed summon.
+            if (string.Equals(Utils.GetPrefabName(offeringBowl.m_bossPrefab),
+                    "vfx_LastBossGate_destroyed", StringComparison.Ordinal))
+            {
+                return "";
+            }
+
             return GetCharacterDisplayName(offeringBowl.m_bossPrefab);
         }
 
