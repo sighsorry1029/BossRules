@@ -109,9 +109,8 @@ internal static partial class DespawnRulesManager
         PendingDespawnObservations.Clear();
         PendingDespawnObservationRemovals.Clear();
         PendingDespawnObservationUpdates.Clear();
-        BootstrapScanBuffer.Clear();
         _nextDespawnTrackingRefreshAt = 0f;
-        _pendingBootstrapScan = true;
+        MarkBootstrapScanDirty();
         _lastObservedDespawnLookupVersion = -1;
         DespawnClock.Restart();
     }
@@ -120,6 +119,10 @@ internal static partial class DespawnRulesManager
     {
         if (!BossRulesPlugin.IsRuntimeServer())
         {
+            if (_bootstrapZdoMan != null)
+            {
+                MarkBootstrapScanDirty();
+            }
             return;
         }
 
@@ -134,7 +137,7 @@ internal static partial class DespawnRulesManager
             PendingDespawnDetachPersists.Clear();
             PendingDespawnDetachPersistRemovals.Clear();
             _nextDespawnTrackingRefreshAt = 0f;
-            _pendingBootstrapScan = true;
+            MarkBootstrapScanDirty();
             _lastObservedDespawnLookupVersion = -1;
             return;
         }
@@ -146,12 +149,15 @@ internal static partial class DespawnRulesManager
         if (_nextDespawnTrackingRefreshAt <= nowRealtime)
         {
             PruneTrackedDespawnTargetsAgainstCurrentConfig();
-            if (_pendingBootstrapScan && RunPendingBootstrapScan())
-            {
-                _pendingBootstrapScan = false;
-                ApplyPendingDespawnObservations();
-            }
             _nextDespawnTrackingRefreshAt = nowRealtime + DespawnTrackingRefreshIntervalSeconds;
+        }
+
+        if (_pendingBootstrapScan)
+        {
+            _pendingBootstrapScan = !RunPendingBootstrapScan();
+            // Publish each slice immediately; live observations and existing
+            // countdowns must keep progressing while the initial scan is pending.
+            ApplyPendingDespawnObservations();
         }
 
         double nowSeconds = GetCurrentDespawnClockSeconds();

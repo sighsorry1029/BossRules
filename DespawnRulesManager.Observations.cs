@@ -13,6 +13,10 @@ internal static partial class DespawnRulesManager
     private static readonly List<ZDOID> PendingDespawnObservationRemovals = new();
     private static readonly List<PendingDespawnObservation> PendingDespawnObservationUpdates = new();
     private static readonly List<ZDO> BootstrapScanBuffer = new();
+    private static ZDOMan? _bootstrapZdoMan;
+    private static IReadOnlyList<string>? _bootstrapPrefabs;
+    private static int _bootstrapPrefabIndex;
+    private static int _bootstrapZdoIndex;
     private static bool _pendingBootstrapScan = true;
     private static int _lastObservedDespawnLookupVersion = -1;
 
@@ -51,19 +55,26 @@ internal static partial class DespawnRulesManager
 
     internal static void MarkBootstrapScanDirty()
     {
+        _bootstrapZdoMan = null;
+        _bootstrapPrefabs = null;
+        _bootstrapPrefabIndex = 0;
+        _bootstrapZdoIndex = 0;
+        BootstrapScanBuffer.Clear();
         _pendingBootstrapScan = true;
     }
 
     private static void ObserveDespawnLookupVersion()
     {
         int version = BossRulesRuntime.GetDespawnLookupVersion();
-        if (version == _lastObservedDespawnLookupVersion)
+        if (version == _lastObservedDespawnLookupVersion &&
+            ReferenceEquals(_bootstrapZdoMan, ZDOMan.instance))
         {
             return;
         }
 
         _lastObservedDespawnLookupVersion = version;
-        _pendingBootstrapScan = true;
+        MarkBootstrapScanDirty();
+        _bootstrapZdoMan = ZDOMan.instance;
     }
 
     private static bool RunPendingBootstrapScan()
@@ -73,17 +84,53 @@ internal static partial class DespawnRulesManager
             return false;
         }
 
-        IReadOnlyList<string> prefabs = BossRulesRuntime.GetDespawnBootstrapPrefabOrder();
-        if (prefabs.Count == 0)
+        _bootstrapPrefabs ??= BossRulesRuntime.GetDespawnBootstrapPrefabOrder();
+        if (_bootstrapPrefabIndex >= _bootstrapPrefabs.Count)
         {
             return true;
         }
 
-        foreach (string prefabName in prefabs)
+        // Keep the public game's sector cursor between Updates, instead of exhausting
+        // every prefab in one frame. A game query slice is not a fixed time budget.
+        string prefabName = _bootstrapPrefabs[_bootstrapPrefabIndex];
+        int sliceStart = _bootstrapZdoIndex;
+        try
         {
-            QueueBootstrapScanDespawnObservations(prefabName);
+            bool complete = ZDOMan.instance.GetAllZDOsWithPrefabIterative(
+                prefabName, BootstrapScanBuffer, ref _bootstrapZdoIndex);
+            foreach (ZDO zdo in BootstrapScanBuffer)
+            {
+                if (zdo == null || zdo.m_uid.IsNone())
+                {
+                    continue;
+                }
+
+                EnqueueDespawnObservation(
+                    new PendingDespawnObservation(
+                        zdo.m_uid,
+                        zdo.GetPrefab(),
+                        prefabName,
+                        DespawnObservationSource.BootstrapScan));
+            }
+
+            if (complete)
+            {
+                _bootstrapPrefabIndex++;
+                _bootstrapZdoIndex = 0;
+            }
+            return _bootstrapPrefabIndex >= _bootstrapPrefabs.Count;
         }
-        return true;
+        catch
+        {
+            // A failed query may already have advanced the cursor. Retry that slice
+            // so clearing its partial buffer cannot skip undispatched observations.
+            _bootstrapZdoIndex = sliceStart;
+            throw;
+        }
+        finally
+        {
+            BootstrapScanBuffer.Clear();
+        }
     }
 
     internal static void QueueCreatedDespawnTarget(int prefabHashHint, ZDO? zdo)
@@ -234,35 +281,6 @@ internal static partial class DespawnRulesManager
                 zdo.GetPrefab(),
                 prefabName,
                 DespawnObservationSource.LoadedCharacter));
-    }
-
-    private static void QueueBootstrapScanDespawnObservations(string prefabName)
-    {
-        if (string.IsNullOrWhiteSpace(prefabName) || ZDOMan.instance == null)
-        {
-            return;
-        }
-
-        BootstrapScanBuffer.Clear();
-        int index = 0;
-        while (!ZDOMan.instance.GetAllZDOsWithPrefabIterative(prefabName, BootstrapScanBuffer, ref index))
-        {
-        }
-
-        foreach (ZDO zdo in BootstrapScanBuffer)
-        {
-            if (zdo == null || zdo.m_uid.IsNone())
-            {
-                continue;
-            }
-
-            EnqueueDespawnObservation(
-                new PendingDespawnObservation(
-                    zdo.m_uid,
-                    zdo.GetPrefab(),
-                    prefabName,
-                    DespawnObservationSource.BootstrapScan));
-        }
     }
 
     private static void EnqueueDespawnObservation(PendingDespawnObservation observation)
