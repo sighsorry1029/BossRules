@@ -315,7 +315,8 @@ internal static partial class DespawnRulesManager
         double nowSeconds)
     {
         Character? loadedCharacter = TryGetLoadedTrackedCharacter(zdo);
-        if (loadedCharacter != null && loadedCharacter.GetHealth() <= 0f)
+        if (AltarRuntime.HasTransferredAltarSummon(zdo) ||
+            (loadedCharacter != null && loadedCharacter.GetHealth() <= 0f))
         {
             PendingDespawnRemovals.Add(zdoId);
             return;

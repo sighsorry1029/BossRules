@@ -104,6 +104,7 @@
         <Compile Include="AltarReferenceGenerator.cs"/>
         <Compile Include="AltarPrefabOwnerResolver.cs"/>
         <Compile Include="BossRuleConfiguration.cs"/>
+        <Compile Include="BossPhaseRuntime.cs"/>
         <Compile Include="BossRulesConsoleCommands.cs"/>
         <Compile Include="BossRulesLocalization.cs"/>
         <Compile Include="AltarRuntime.cs"/>

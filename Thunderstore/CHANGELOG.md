@@ -1,3 +1,23 @@
+## 1.1.3
+
+- Preserve the original paid offering and altar position across configured boss phases, so later phases can refund that offering when removed by the existing despawn rules. Support direct death-effect transitions and a single persistent Ragdoll bridge, including Frozen King and MonsterLabZ's Ash Huldra Queen. Phase kills and the final kill do not directly refund items.
+- Track configured non-boss phases only for altar-summoned instances unless an explicit despawn rule applies. Preserve free-summon records, per-phase despawn overrides and duplicate-transfer protection; natural/initial spawns receive no offering refund record. Previously spawned later phases without a record cannot be refunded retroactively.
+- Update BossRules on the host/server and all clients. MonsterLabZ remains optional.
+
+To configure phase chains explicitly, manually add the following **top-level section** to `BepInEx/config/BossRules/BossRules.yml` on the server (or your local game for single-player). If `bossPhases` already exists, edit that section instead of adding a duplicate:
+
+```yaml
+bossPhases:
+  - [FrozenKing, FrozenKing_p2, FrozenKing_p3]
+  - [ML_AshHuldraQueen1, ML_AshHuldraQueen2, ML_AshHuldraQueen3]
+```
+
+Use only the character prefab names in transition order. The intermediate `ML_AshHuldraQueen2_Transform` Ragdoll is detected automatically and must not be listed. Other chains can be added when they use the supported transition paths; custom script/RPC transitions and branching spawns are not inferred.
+
+Existing YAML files are preserved. These two chains also apply by default when `bossPhases` is omitted or null, so manual addition is optional. An explicit list replaces the defaults; keep both rows when adding another chain if you want to retain them. Use `bossPhases: []` to disable inheritance. Uninstalled prefabs remain inactive. Changes use the existing live reload and server synchronization.
+
+## Previous releases
+
 | `Version` | `Update Notes`    |
 |-----------|-------------------|
 | 1.1.2     | - Add optional personal first-victory summons with YouAreNotWorthy 1.0.8 or later: summon the Queen for free until personal `defeated_queen`, and the inner Frozen King with personal `LastBossGate_Open` until final `defeated_frozenking_p3`. The exterior gate keeps its normal cost. <br> - Eligible players can use the altar's Use interaction without carrying offerings; matching item use also requests a free summon. Keep YNW item progression requirements and normal offering costs after completion. <br> - Validate free requests through the server and current altar owner, rejecting duplicate, expired, or invalid approvals. Free summons never produce offering refunds. Add English/Korean prompts and isolated protocol, API, refund, and game-Mono checks. Update both mods on the host/server and clients. |

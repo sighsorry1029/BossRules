@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../BossPhaseRuntime.cs" Link="BossPhaseRuntime.cs" />
+    <Compile Include="../../BossRuleConfiguration.cs" Link="BossRuleConfiguration.cs" />
+    <Compile Include="../../BossRulesRuntime.cs" Link="BossRulesRuntime.cs" />
+    <Compile Include="../../AltarRuntime.Refunds.cs" Link="AltarRuntime.Refunds.cs" />
+    <Reference Include="YamlDotNet" HintPath="../../Libs/YamlDotNet.dll" />
+    <PackageReference Include="Lib.Harmony" Version="2.4.1" />
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
+  </ItemGroup>
+</Project>

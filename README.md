@@ -110,6 +110,7 @@ No existing altar YAML or personal-key save format needs migration.
 `BossRules.yml` controls runtime boss behavior:
 
 - `despawn`: default range/delay plus compact rows in `prefab, despawnRange, despawnDelay, refunds` format.
+- `bossPhases`: ordered character prefab lists that inherit the original altar offering across a boss fight.
 - `bossTamedPressure`: a global rule for tamed creatures near bosses.
 
 `BossRules.forsakenPowers.yml` controls selected Forsaken Power stat edits. Its top-level list is intentionally compatible with DataForge `effects.yml` rows.
@@ -138,6 +139,49 @@ Refunds drop at the original `OfferingBowl` position when possible. Bosses from 
 Newly generated initial Queens in the Queen boss room and initial Frozen Kings in `DN_Bossroom` are protected from default automatic despawn until a living player approaches within the configured XZ despawn range and a height difference of at most 32m. Approach is checked once per second by the boss's network owner. It does not require opening the door, entering the room, line of sight, or combat: a nearby player outside a wall at the same height can release protection. After that first approach, the existing XZ-only range and countdown apply, without altar refunds. An explicit row for the boss in `despawn.rules` takes precedence, including before the first approach.
 
 Initial provenance and first approach are saved on each boss ZDO, so they survive normal saves, reloads, and ownership changes. This applies to new Full/Ghost location or room generation, including resets; existing bosses with unknown provenance are not reclassified, and already missing bosses are not restored. Altar resummons keep their existing despawn and refund behavior. The approach checks must also be installed on clients that can own the boss.
+
+### Boss phases and offering refunds
+
+List only the **character phases**, using exact prefab names, in the server's `BossRules.yml`:
+
+```yaml
+bossPhases:
+  - [FrozenKing, FrozenKing_p2, FrozenKing_p3]
+  - [ML_AshHuldraQueen1, ML_AshHuldraQueen2, ML_AshHuldraQueen3]
+```
+
+These two chains are the defaults when `bossPhases` is absent or null; existing files are not rewritten.
+An explicit list replaces the defaults, and `bossPhases: []` disables inheritance. Include the
+Frozen King row when adding custom chains if you want to retain it. Uninstalled mod prefabs
+remain inactive. Each row needs at least two names, and a prefab may occur only once across
+all rows. Invalid YAML, duplicate phases and cycles reject the reload and keep the previous
+configuration. The existing YAML watcher and server sync also apply to this section; all
+clients that can own these creatures need the updated BossRules build.
+
+BossRules supports a death effect that creates the next character directly, or creates one
+persistent network Ragdoll whose removal effect creates that character. For example,
+`ML_AshHuldraQueen2_Transform` is discovered automatically and **must not be listed**. Only the
+current related effect lists are inspected at the transition; no AssetBundles are loaded or
+scanned. The path is rechecked against live effects, including changes made by other mods.
+Branching character spawns, multiple matching results, nonpersistent objects, longer Ragdoll
+chains and custom script/RPC transitions are not inferred. Unsupported paths log a warning
+when an altar-summoned phase attempts the transition.
+
+The actual spawning owner passes the original offering and altar position to the exact
+created object. A Ragdoll bridge stores the record in its ZDO while waiting; a consumed-source
+ZDO marker prevents repeated callbacks from copying the record twice. Neither phase kills
+nor the final kill directly refund items. The active character phase uses the existing
+distance/countdown despawn rules and returns the original paid offering when those rules
+remove it. Per-prefab `despawn.rules` still take precedence, including `refunds: false` and
+range `0`. Configured non-boss phases are automatically tracked only when they carry altar
+provenance; their game `boss` flag is unchanged. Natural/initial spawns receive no offering
+record, and YNW free summons retain an empty refund throughout the chain.
+
+Removing or changing an edge live stops further transfers along that edge, including a
+Ragdoll already waiting to transform. It does not manufacture or erase a current character's
+record. Already spawned later phases whose original offering was lost before this update
+cannot be refunded retroactively. This feature does not change the existing same-prefab
+duplicate-summon blocking policy or make Ragdolls count as living bosses for that check.
 
 ## Localization
 

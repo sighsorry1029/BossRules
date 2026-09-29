@@ -14,6 +14,8 @@ internal static partial class AltarRuntime
     private static readonly int AltarSummonKey = $"{BossRulesPlugin.ModName}.altar_summon".GetStableHashCode();
     private static readonly int AltarRefundsKey = $"{BossRulesPlugin.ModName}.altar_refunds".GetStableHashCode();
     private static readonly int AltarRefundPointKey = $"{BossRulesPlugin.ModName}.altar_refund_point".GetStableHashCode();
+    private static readonly KeyValuePair<int, int> AltarSuccessorKey =
+        ZDO.GetHashZDOID($"{BossRulesPlugin.ModName}.altar_successor");
     private const float AltarSpawnMarkerMaxDistance = 128f;
     private const float AltarSpawnMarkerMaxDistanceSquared = AltarSpawnMarkerMaxDistance * AltarSpawnMarkerMaxDistance;
     private const float AltarSpawnMarkerRetrySeconds = 5f;
@@ -344,10 +346,32 @@ internal static partial class AltarRuntime
 
     internal static bool IsAltarSummoned(ZDO zdo) => zdo.GetBool(AltarSummonKey);
 
+    internal static bool HasTransferredAltarSummon(ZDO zdo) => !zdo.GetZDOID(AltarSuccessorKey).IsNone();
+
+    internal static bool TryTransferAltarSummon(ZDO source, ZDO target)
+    {
+        if (!source.IsOwner() || !target.IsOwner() || source.m_uid.IsNone() || target.m_uid.IsNone() ||
+            source.m_uid == target.m_uid || !IsAltarSummoned(source) || HasTransferredAltarSummon(source) ||
+            IsAltarSummoned(target) || HasTransferredAltarSummon(target))
+        {
+            return false;
+        }
+
+        // Preserve an explicit empty (free summon) payload. Never reconstruct a
+        // cost from the next prefab or today's altar configuration.
+        target.Set(AltarRefundsKey, source.GetString(AltarRefundsKey, ""));
+        target.Set(AltarRefundPointKey, source.GetString(AltarRefundPointKey, ""));
+        target.Set(AltarSummonKey, true);
+        // Both writes run synchronously on the spawning owner. Persist the consumed
+        // source so a repeated death/removal callback cannot grant another refund.
+        source.Set(AltarSuccessorKey, target.m_uid);
+        return true;
+    }
+
     internal static bool TryResolveAltarSummonRefunds(ZDO? zdo, out IReadOnlyCollection<DespawnRefundDrop> refunds)
     {
         refunds = Array.Empty<DespawnRefundDrop>();
-        if (zdo == null || !zdo.GetBool(AltarSummonKey))
+        if (zdo == null || !zdo.GetBool(AltarSummonKey) || HasTransferredAltarSummon(zdo))
         {
             return false;
         }

@@ -20,6 +20,9 @@ internal sealed class BossRuleConfigurationSection
     [YamlMember(Order = 3)]
     // Legacy parse-only field. Message localization now comes from language files.
     public BossRuleLocalizationDefinition? Localization { get; set; }
+
+    [YamlMember(Order = 4)]
+    public List<List<string>>? BossPhases { get; set; }
 }
 
 internal sealed class BossDespawnConfigurationDefinition
@@ -78,6 +81,7 @@ internal sealed class BossRuleConfigurationState
     internal float DefaultDespawnRange { get; set; } = FallbackDespawnRange;
     internal float DefaultDespawnDelaySeconds { get; set; } = FallbackDespawnDelaySeconds;
     internal List<BossDespawnDefinition> DespawnRules { get; } = new();
+    internal List<List<string>> BossPhases { get; } = new();
     internal BossTamedPressureDefinition? BossTamedPressureRule { get; set; }
 }
 
@@ -144,7 +148,7 @@ internal static class BossRuleConfiguration
 
             state = Normalize(parsed ?? new BossRuleConfigurationSection());
             BossRulesPlugin.BossRulesLogger.LogInfo(
-                $"Loaded boss rules YAML from {source}: {state.DespawnRules.Count} despawn entries, {(state.BossTamedPressureRule != null ? 1 : 0)} boss tamed pressure entries.");
+                $"Loaded boss rules YAML from {source}: {state.DespawnRules.Count} despawn entries, {state.BossPhases.Count} boss phase chains, {(state.BossTamedPressureRule != null ? 1 : 0)} boss tamed pressure entries.");
             return true;
         }
         catch (Exception ex)
@@ -164,6 +168,29 @@ internal static class BossRuleConfiguration
             state.DespawnRules.Add(ParseDespawnRule(rawDespawnRule));
         }
 
+        // Missing section keeps the shipped chains; an explicit [] disables them.
+        HashSet<string> phaseNames = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<int> phaseHashes = new();
+        foreach (List<string>? chain in section.BossPhases ?? DefaultBossPhases())
+        {
+            if (chain == null || chain.Count < 2)
+            {
+                throw new FormatException("Each bossPhases row must list at least two character prefabs in order.");
+            }
+
+            List<string> normalized = new();
+            foreach (string? name in chain)
+            {
+                string phase = (name ?? "").Trim();
+                if (phase.Length == 0 || !phaseNames.Add(phase) || !phaseHashes.Add(phase.GetStableHashCode()))
+                {
+                    throw new FormatException($"bossPhases contains an empty, repeated or hash-colliding prefab '{phase}'. Each prefab may appear only once across all chains.");
+                }
+                normalized.Add(phase);
+            }
+            state.BossPhases.Add(normalized);
+        }
+
         if (section.BossTamedPressure != null)
         {
             NormalizeBossTamedPressure(section.BossTamedPressure);
@@ -180,6 +207,12 @@ internal static class BossRuleConfiguration
 
         return state;
     }
+
+    internal static List<List<string>> DefaultBossPhases() => new()
+    {
+        new() { "FrozenKing", "FrozenKing_p2", "FrozenKing_p3" },
+        new() { "ML_AshHuldraQueen1", "ML_AshHuldraQueen2", "ML_AshHuldraQueen3" }
+    };
 
     private static (float Range, float DelaySeconds) ParseDespawnDefaults(string? rawDefaults)
     {
@@ -361,6 +394,15 @@ internal static class BossRuleConfigurationFiles
         builder.AppendLine("  #   despawnRange: 0 disables despawn for that prefab.");
         builder.AppendLine("  #   refunds omitted or empty: true. Use false to disable altar offering refunds.");
         builder.AppendLine("  - Fader, 64, 90, true # Boss prefabs are auto-detected, but non-boss Character prefabs can also be listed here for despawn rules.");
+        builder.AppendLine();
+        builder.AppendLine("# Character phases only. A persistent Ragdoll bridge is detected automatically.");
+        builder.AppendLine("# Missing bossPhases uses these defaults; bossPhases: [] disables phase inheritance.");
+        builder.AppendLine("# A supplied list replaces the defaults. Uninstalled prefabs stay inactive.");
+        builder.AppendLine("bossPhases:");
+        foreach (List<string> chain in BossRuleConfiguration.DefaultBossPhases())
+        {
+            builder.AppendLine($"  - [{string.Join(", ", chain)}]");
+        }
         builder.AppendLine();
         builder.AppendLine("bossTamedPressure:");
         builder.AppendLine("  bossPrefabs: [Eikthyr] # Extra source boss prefabs added to the auto-detected boss set");

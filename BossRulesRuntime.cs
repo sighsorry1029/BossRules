@@ -22,6 +22,7 @@ internal static class BossRulesRuntime
         public Dictionary<int, CompiledDespawnRule> RulesByPrefabHash { get; } = new();
         public Dictionary<int, string> PrefabNamesByHash { get; } = new();
         public HashSet<int> EligiblePrefabHashes { get; } = new();
+        public HashSet<int> PhasePrefabHashes { get; } = new();
         public HashSet<string> BootstrapPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
         public IReadOnlyList<string> BootstrapPrefabOrder { get; set; } = Array.Empty<string>();
     }
@@ -53,6 +54,7 @@ internal static class BossRulesRuntime
         lock (Sync)
         {
             _configuration = configuration ?? BossRuleConfigurationState.Empty;
+            BossPhaseRuntime.Configure(_configuration.BossPhases);
             _runtimeState = RuntimeState.Empty;
             _runtimeStateReady = false;
             _runtimeGameDataSignature = -1;
@@ -74,6 +76,7 @@ internal static class BossRulesRuntime
         lock (Sync)
         {
             _configuration = BossRuleConfigurationState.Empty;
+            BossPhaseRuntime.Configure(_configuration.BossPhases);
             _runtimeState = RuntimeState.Empty;
             _runtimeStateReady = false;
             _runtimeGameDataSignature = -1;
@@ -186,7 +189,7 @@ internal static class BossRulesRuntime
         EnsureRuntimeState();
         if (prefabHash != 0)
         {
-            if (!_runtimeState.PrefabNamesByHash.TryGetValue(prefabHash, out string resolvedPrefabName) ||
+            if (!_runtimeState.PrefabNamesByHash.TryGetValue(prefabHash, out string? resolvedPrefabName) ||
                 string.IsNullOrWhiteSpace(resolvedPrefabName))
             {
                 resolvedPrefabName = ResolvePrefabName(prefabHash);
@@ -205,7 +208,8 @@ internal static class BossRulesRuntime
                 return !string.IsNullOrWhiteSpace(prefabName);
             }
 
-            if (IsAutoDetectedBossPrefab(prefabHash))
+            if (IsAutoDetectedBossPrefab(prefabHash) ||
+                (_runtimeState.PhasePrefabHashes.Contains(prefabHash) && AltarRuntime.IsAltarSummoned(zdo)))
             {
                 refunds = ResolveAutoAltarRefunds(zdo);
                 return !string.IsNullOrWhiteSpace(prefabName);
@@ -387,6 +391,23 @@ internal static class BossRulesRuntime
             int prefabHash = prefabName.GetStableHashCode();
             state.PrefabNamesByHash[prefabHash] = prefabName;
             state.EligiblePrefabHashes.Add(prefabHash);
+        }
+
+        foreach (List<string> chain in configuration.BossPhases)
+        {
+            foreach (string prefabName in chain)
+            {
+                GameObject? prefab = ZNetScene.instance?.GetPrefab(prefabName);
+                if (prefab == null || !prefab.TryGetComponent(out Character _))
+                {
+                    continue;
+                }
+                int prefabHash = prefabName.GetStableHashCode();
+                state.PhasePrefabHashes.Add(prefabHash);
+                state.EligiblePrefabHashes.Add(prefabHash);
+                state.PrefabNamesByHash[prefabHash] = prefabName;
+                state.BootstrapPrefabs.Add(prefabName);
+            }
         }
 
         foreach (BossDespawnDefinition entry in configuration.DespawnRules)
