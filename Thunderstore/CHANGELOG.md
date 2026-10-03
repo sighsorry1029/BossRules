@@ -1,3 +1,8 @@
+## 1.1.4
+
+- Change the default `Rotate Forsaken Power Shortcut` from `G` to `LeftAlt` (left Alt).
+- Existing saved shortcuts are preserved. To use the new default with an existing configuration, set this client-side option to `LeftAlt` or reset the option to its default.
+
 ## 1.1.3
 
 - Preserve the original paid offering and altar position across configured boss phases, so later phases can refund that offering when removed by the existing despawn rules. Support direct death-effect transitions and a single persistent Ragdoll bridge, including Frozen King and MonsterLabZ's Ash Huldra Queen. Phase kills and the final kill do not directly refund items.

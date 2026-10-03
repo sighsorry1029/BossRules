@@ -258,7 +258,7 @@ BossRules owns personalized boss stones and remote Forsaken Power selection.
 
 - `Personalized Boss Stones`: each player keeps their own unlocked boss stone powers.
 - `Remote Forsaken Power Selection`: players can rotate through unlocked powers without returning to the Start Temple.
-- `Rotate Forsaken Power Shortcut`: client-only shortcut for remote rotation.
+- `Rotate Forsaken Power Shortcut`: client-only shortcut for remote rotation; defaults to `LeftAlt` (left Alt). Existing saved shortcuts are preserved.
 
 Console commands:
 

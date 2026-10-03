@@ -27,7 +27,7 @@ internal static class BossRulesConfig
         _rotateForsakenPowerShortcut = plugin.BindConfigEntry(
             "2 - Forsaken & Altars",
             "Rotate Forsaken Power Shortcut",
-            new KeyboardShortcut(KeyCode.G),
+            new KeyboardShortcut(KeyCode.LeftAlt),
             "Shortcut used to rotate through unlocked Forsaken Powers when Remote Forsaken Power Selection is enabled. This setting is client-side only.",
             synchronizedSetting: false,
             configManagerOrder: 600);
