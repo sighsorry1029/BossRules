@@ -32,8 +32,14 @@ internal static class ForsakenPowerSelectionRuntime
     private static readonly List<string> CachedUnlockedGuardianPowers = new();
     private static int _cachedUnlockedGuardianPowersPlayerInstanceId;
     private static bool _unlockedGuardianPowersDirty = true;
+    private static int _cachedUnlockedGuardianPowersObjectDbInstanceId;
+    private static readonly ForsakenPowerShortcutInput ShortcutInput = new();
+    private static KeyboardShortcut _pressedShortcut;
+    private static Player? _pressedPlayer;
+    private static Hud? _pressedHud;
     private static KeyboardShortcut _cachedHintShortcut;
-    private static string _cachedHintRotateLabel = "";
+    private static string _cachedHintLabel = "";
+    private static bool _cachedHintRadialOpen;
     private static string _cachedHintText = "";
 
     internal static void InvalidateGuardianPowerCache()
@@ -43,41 +49,104 @@ internal static class ForsakenPowerSelectionRuntime
 
     internal static void Shutdown()
     {
+        CancelInput();
+        ShortcutInput.Reset();
         DestroyGuardianPowerHint();
         CachedUnlockedGuardianPowers.Clear();
         _cachedUnlockedGuardianPowersPlayerInstanceId = 0;
+        _cachedUnlockedGuardianPowersObjectDbInstanceId = 0;
         _unlockedGuardianPowersDirty = true;
         _cachedHintShortcut = default;
-        _cachedHintRotateLabel = "";
+        _cachedHintLabel = "";
         _cachedHintText = "";
     }
 
-    internal static void TryRotateSelection(Player? player)
+    internal static void UpdateInput()
     {
-        if (!CanRotateSelection(player))
+        ForsakenPowerRadial.PollLifetime();
+        Player? player = Player.m_localPlayer;
+        Hud? hud = Hud.instance;
+        KeyboardShortcut configured = BossRulesConfig.GetRotateForsakenPowerShortcut();
+        if (ShortcutInput.IsIdle)
         {
-            return;
+            _pressedShortcut = configured;
+            _pressedPlayer = player;
+            _pressedHud = hud;
         }
 
-        List<string> unlockedPowers = GetCachedUnlockedGuardianPowers(player!);
-        if (unlockedPowers.Count == 0)
-        {
-            player!.Message(MessageHud.MessageType.TopLeft, "No unlocked Forsaken Powers available.");
-            return;
-        }
+        KeyCode key = _pressedShortcut.MainKey;
+        bool held = key != KeyCode.None && Input.GetKey(key);
+        // Modifiers qualify a new shortcut press; releasing them never closes an
+        // already open menu. Keep the captured binding until this session ends.
+        bool down = key != KeyCode.None && Input.GetKeyDown(key) && _pressedShortcut.Modifiers.All(Input.GetKey);
+        if (ShortcutInput.IsIdle && !down) return;
+        bool allowed = CanUseSelection(player, hud) && player == _pressedPlayer && hud == _pressedHud &&
+                       configured.Equals(_pressedShortcut) &&
+                       !Input.GetKeyDown(KeyCode.Escape) && !Input.GetMouseButtonUp(1) &&
+                       !ZInput.GetButton("OpenRadial") && !ZInput.GetButton("OpenEmote") &&
+                       !ZInput.GetButtonDown("JoyRadial") && !ZInput.IsExclusiveGamepadActive() &&
+                       (!ShortcutInput.IsOpen || ForsakenPowerRadial.IsOpen);
 
-        string currentPower = player!.GetGuardianPowerName() ?? "";
-        if (unlockedPowers.Count == 1 && string.Equals(unlockedPowers[0], currentPower, StringComparison.OrdinalIgnoreCase))
+        ForsakenPowerShortcutInput.Action action = ShortcutInput.Step(allowed, down, held,
+            Input.GetMouseButtonDown(0), Input.GetMouseButtonUp(0));
+        switch (action)
         {
-            return;
+            case ForsakenPowerShortcutInput.Action.Open:
+                InvalidateGuardianPowerCache();
+                List<string> powers = GetCachedUnlockedGuardianPowers(player!);
+                if (powers.Count == 0)
+                {
+                    ShowNoUnlockedPowers(player!);
+                    CancelInput();
+                }
+                else if (!ForsakenPowerRadial.TryOpen(hud!, player!, powers))
+                {
+                    CancelInput();
+                }
+                break;
+            case ForsakenPowerShortcutInput.Action.Commit:
+                ForsakenPowerRadial.SelectAndClose(player!);
+                break;
+            case ForsakenPowerShortcutInput.Action.Cancel:
+                ForsakenPowerRadial.Close();
+                break;
         }
-
-        int currentIndex = unlockedPowers.FindIndex(powerName => string.Equals(powerName, currentPower, StringComparison.OrdinalIgnoreCase));
-        int nextIndex = currentIndex >= 0 ? (currentIndex + 1) % unlockedPowers.Count : 0;
-        string nextPower = unlockedPowers[nextIndex];
-        player.SetGuardianPower(nextPower);
-        player.Message(MessageHud.MessageType.TopLeft, $"Forsaken Power: {GetDisplayName(nextPower)}");
+        ForsakenPowerRadial.UpdateDescription();
+        if (ShortcutInput.IsIdle)
+        {
+            _pressedPlayer = null;
+            _pressedHud = null;
+        }
     }
+
+    internal static void CancelInput()
+    {
+        ShortcutInput.Cancel();
+        ForsakenPowerRadial.Close();
+        _pressedPlayer = null;
+        _pressedHud = null;
+    }
+
+    internal static bool TrySelectPower(Player player, string power)
+    {
+        if (!CanUseSelection(player, Hud.instance) ||
+            ObjectDB.instance?.GetStatusEffect(power.GetStableHashCode()) == null ||
+            !BossStonePerPlayerRuntime.GetUnlockedGuardianPowerNames(player).Contains(power))
+        {
+            return false;
+        }
+        if (!string.Equals(player.GetGuardianPowerName(), power, StringComparison.OrdinalIgnoreCase))
+        {
+            player.SetGuardianPower(power);
+            player.Message(MessageHud.MessageType.TopLeft,
+                BossRulesLocalization.Text(BossRulesLocalization.MessageForsakenPowerSelectedKey)
+                    .Replace("{name}", GetDisplayName(power)));
+        }
+        return true;
+    }
+
+    private static void ShowNoUnlockedPowers(Player player) => player.Message(MessageHud.MessageType.TopLeft,
+        BossRulesLocalization.Text(BossRulesLocalization.MessageForsakenPowerNoneKey));
 
     internal static void UpdateHudHint(Hud? hud, Player? player)
     {
@@ -107,17 +176,17 @@ internal static class ForsakenPowerSelectionRuntime
         }
     }
 
-    private static bool CanRotateSelection(Player? player)
+    private static bool CanUseSelection(Player? player, Hud? hud)
     {
         if (!BossRulesConfig.IsRemoteForsakenPowerSelectionEnabled() ||
             player == null ||
-            player != Player.m_localPlayer ||
-            !IsShortcutDown(BossRulesConfig.GetRotateForsakenPowerShortcut()))
+            player != Player.m_localPlayer || !Application.isFocused ||
+            hud == null || !hud.isActiveAndEnabled || ObjectDB.instance == null)
         {
             return false;
         }
 
-        if (player.IsDead() || player.InCutscene() || player.IsTeleporting())
+        if (player.IsDead() || player.InCutscene() || player.IsTeleporting() || player.IsSleeping())
         {
             return false;
         }
@@ -134,7 +203,7 @@ internal static class ForsakenPowerSelectionRuntime
             GameCamera.InFreeFly() ||
             PlayerCustomizaton.IsBarberGuiVisible() ||
             UnifiedPopup.IsVisible() ||
-            Hud.InRadial() ||
+            (Hud.InRadial() && !ForsakenPowerRadial.Owns(hud.m_radialMenu)) ||
             Hud.IsPieceSelectionVisible())
         {
             return false;
@@ -154,12 +223,15 @@ internal static class ForsakenPowerSelectionRuntime
     private static List<string> GetCachedUnlockedGuardianPowers(Player player)
     {
         int playerInstanceId = player.GetInstanceID();
+        int objectDbInstanceId = ObjectDB.instance != null ? ObjectDB.instance.GetInstanceID() : 0;
         if (_unlockedGuardianPowersDirty ||
-            _cachedUnlockedGuardianPowersPlayerInstanceId != playerInstanceId)
+            _cachedUnlockedGuardianPowersPlayerInstanceId != playerInstanceId ||
+            _cachedUnlockedGuardianPowersObjectDbInstanceId != objectDbInstanceId)
         {
             CachedUnlockedGuardianPowers.Clear();
             CachedUnlockedGuardianPowers.AddRange(BuildUnlockedGuardianPowers(player));
             _cachedUnlockedGuardianPowersPlayerInstanceId = playerInstanceId;
+            _cachedUnlockedGuardianPowersObjectDbInstanceId = objectDbInstanceId;
             _unlockedGuardianPowersDirty = false;
         }
 
@@ -184,7 +256,7 @@ internal static class ForsakenPowerSelectionRuntime
         return GuardianPowerOrder.TryGetValue(guardianPowerName ?? "", out int order) ? order : int.MaxValue;
     }
 
-    private static string GetDisplayName(string guardianPowerName)
+    internal static string GetDisplayName(string guardianPowerName)
     {
         string displayName = ObjectDB.instance?.GetStatusEffect(guardianPowerName.GetStableHashCode())?.m_name ?? guardianPowerName;
         return Localization.instance != null ? Localization.instance.Localize(displayName) : displayName;
@@ -270,15 +342,20 @@ internal static class ForsakenPowerSelectionRuntime
     private static string GetCachedHintText()
     {
         KeyboardShortcut shortcut = BossRulesConfig.GetRotateForsakenPowerShortcut();
-        string rotateLabel = BossRulesLocalization.Text(
-            BossRulesLocalization.MessageForsakenPowerRotateKey);
+        bool radialOpen = ForsakenPowerRadial.IsOpen;
+        string label = BossRulesLocalization.Text(radialOpen
+            ? BossRulesLocalization.MessageForsakenPowerControlsKey
+            : BossRulesLocalization.MessageForsakenPowerOpenKey);
         if (_cachedHintText.Length == 0 ||
             !_cachedHintShortcut.Equals(shortcut) ||
-            !string.Equals(_cachedHintRotateLabel, rotateLabel, StringComparison.Ordinal))
+            _cachedHintRadialOpen != radialOpen ||
+            !string.Equals(_cachedHintLabel, label, StringComparison.Ordinal))
         {
             _cachedHintShortcut = shortcut;
-            _cachedHintRotateLabel = rotateLabel;
-            _cachedHintText = $"[{GetShortcutLabel(shortcut)}] {rotateLabel}";
+            _cachedHintRadialOpen = radialOpen;
+            _cachedHintLabel = label;
+            string keyLabel = $"[{GetShortcutLabel(shortcut)}]";
+            _cachedHintText = radialOpen ? label.Replace("{key}", keyLabel) : $"{keyLabel} {label}";
         }
 
         return _cachedHintText;
@@ -319,10 +396,60 @@ internal static class ForsakenPowerSelectionRuntime
         };
     }
 
-    private static bool IsShortcutDown(KeyboardShortcut shortcut)
+}
+
+// The shortcut toggles the menu; it never selects a power on release. A mouse
+// click must begin after opening, so the opening press cannot also confirm.
+internal sealed class ForsakenPowerShortcutInput
+{
+    internal enum Action { None, Open, Commit, Cancel }
+    private enum Phase { Idle, Open, WaitForRelease }
+    private Phase _phase;
+    private bool _confirmPressed;
+    internal bool IsIdle => _phase == Phase.Idle;
+    internal bool IsOpen => _phase == Phase.Open;
+
+    internal Action Step(bool allowed, bool down, bool held, bool confirmDown, bool confirmUp)
     {
-        return shortcut.MainKey != KeyCode.None &&
-               Input.GetKeyDown(shortcut.MainKey) &&
-               shortcut.Modifiers.All(Input.GetKey);
+        if (_phase == Phase.WaitForRelease)
+        {
+            if (!held) _phase = Phase.Idle;
+            return Action.None;
+        }
+        if (!allowed)
+        {
+            bool active = _phase != Phase.Idle;
+            _phase = held ? Phase.WaitForRelease : Phase.Idle;
+            _confirmPressed = false;
+            return active ? Action.Cancel : Action.None;
+        }
+        if (_phase == Phase.Idle)
+        {
+            if (down)
+            {
+                _phase = Phase.Open;
+                _confirmPressed = false;
+                return Action.Open;
+            }
+            return Action.None;
+        }
+        if (down)
+        {
+            Cancel();
+            return Action.Cancel;
+        }
+        if (confirmDown) _confirmPressed = true;
+        // Native mouse radial interaction also confirms on mouse-up. Keeping the
+        // menu open through mouse-down prevents that click becoming a held attack.
+        if (confirmUp && _confirmPressed)
+        {
+            _phase = held ? Phase.WaitForRelease : Phase.Idle;
+            _confirmPressed = false;
+            return Action.Commit;
+        }
+        return Action.None;
     }
+
+    internal void Cancel() { _phase = Phase.WaitForRelease; _confirmPressed = false; }
+    internal void Reset() { _phase = Phase.Idle; _confirmPressed = false; }
 }

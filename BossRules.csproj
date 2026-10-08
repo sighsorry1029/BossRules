@@ -132,6 +132,7 @@
         <Compile Include="ForsakenPowerRuntime.Snapshots.cs"/>
         <Compile Include="ForsakenPowerRuntimePatches.cs"/>
         <Compile Include="ForsakenPowerSelectionRuntime.cs"/>
+        <Compile Include="ForsakenPowerRadial.cs"/>
         <Compile Include="LocalizationManager.cs"/>
         <Compile Include="RangeDefinitions.cs"/>
         <Compile Include="RuntimeState.cs"/>

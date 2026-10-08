@@ -16,7 +16,7 @@ namespace BossRules;
 public sealed class BossRulesPlugin : BaseUnityPlugin
 {
     internal const string ModName = "BossRules";
-    internal const string ModVersion = "1.1.4";
+    internal const string ModVersion = "1.1.5";
     internal const string Author = "sighsorry";
     internal const string ModGUID = $"{Author}.{ModName}";
     internal const string AltarYamlFileName = $"{ModName}.altar.yml";
@@ -106,6 +106,22 @@ public sealed class BossRulesPlugin : BaseUnityPlugin
         InitialBossEncounter.CheckApproaches();
         DespawnRulesManager.ExecuteServerTick();
         BossTamedPressureRuntime.ExecuteServerTick();
+    }
+
+    private void LateUpdate()
+    {
+        // Native radial Update samples the pointer first. Poll once, also after logout.
+        ForsakenPowerSelectionRuntime.UpdateInput();
+    }
+
+    private void OnApplicationFocus(bool focused)
+    {
+        if (!focused) ForsakenPowerSelectionRuntime.CancelInput();
+    }
+
+    private void OnDisable()
+    {
+        ForsakenPowerSelectionRuntime.CancelInput();
     }
 
     private void OnDestroy()

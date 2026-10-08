@@ -28,7 +28,7 @@ internal static class BossRulesConfig
             "2 - Forsaken & Altars",
             "Rotate Forsaken Power Shortcut",
             new KeyboardShortcut(KeyCode.LeftAlt),
-            "Shortcut used to rotate through unlocked Forsaken Powers when Remote Forsaken Power Selection is enabled. This setting is client-side only.",
+            "Press once to open the Forsaken Power radial, then left-click a power to select it. Press the shortcut again, Escape, or right-click to cancel; a center click also cancels. The menu stays open after releasing the shortcut. Vanilla radial shortcuts take priority. This setting is client-side only; the legacy setting name is retained to preserve saved bindings.",
             synchronizedSetting: false,
             configManagerOrder: 600);
         _enableAltarRules = plugin.BindConfigEntry(
@@ -84,7 +84,7 @@ internal static class BossRulesConfig
             "2 - Forsaken & Altars",
             "Remote Forsaken Power Selection",
             BossRulesPlugin.Toggle.On,
-            "If on, players can rotate through Forsaken Powers they have unlocked through per-player boss stones without returning to the Start Temple.",
+            "If on, players can select Forsaken Powers they have unlocked through per-player boss stones from a radial menu without returning to the Start Temple.",
             synchronizedSetting: true,
             configManagerOrder: 500);
         _enableDespawnRules = plugin.BindConfigEntry(

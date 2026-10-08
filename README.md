@@ -1,7 +1,10 @@
 # BossRules
 
 Forsaken powers overhaul, despawn abandoned bosses with offering refunds, hover an altar to see the offering and boss. <br>
-Rotate Forsaken Powers remotely, block duplicate summons, personalize boss stones, and pressure tames near bosses.
+Select Forsaken Powers remotely, block duplicate summons, personalize boss stones, and pressure tames near bosses.
+
+![](https://i.ibb.co/LdtFvGDQ/Screenshot-2026-10-08-182508.png) <br>
+You can select Forsaken Powers remotely using radial menu.
 
 ![](https://i.ibb.co/C3tz6LBW/eikthyrdespawn.gif) <br>
 You can change the boss despawn range and delay in the config.
@@ -192,7 +195,7 @@ bossrules_message_despawn_start: "{name} will despawn in {seconds}s unless someo
 bossrules_message_despawn_reminder: "{name} will despawn in {seconds}s."
 bossrules_message_despawn_canceled: "{name} despawn canceled."
 bossrules_message_boss_tamed_pressure: "Tamed creatures near a boss are weakened."
-bossrules_message_forsaken_power_rotate: "Rotate"
+bossrules_message_forsaken_power_open: "Choose power"
 ```
 
 Embedded English is the fallback for missing message keys. Despawn names are resolved on the receiving client in this order: the client's current localized character name, its English localized name, then the prefab name.
@@ -257,8 +260,28 @@ All seven default powers use `time: 31, 120`: 31 seconds of duration and a 120-s
 BossRules owns personalized boss stones and remote Forsaken Power selection.
 
 - `Personalized Boss Stones`: each player keeps their own unlocked boss stone powers.
-- `Remote Forsaken Power Selection`: players can rotate through unlocked powers without returning to the Start Temple.
-- `Rotate Forsaken Power Shortcut`: client-only shortcut for remote rotation; defaults to `LeftAlt` (left Alt). Existing saved shortcuts are preserved.
+- `Remote Forsaken Power Selection`: players can select unlocked powers without returning to the Start Temple.
+- `Rotate Forsaken Power Shortcut`: client-only shortcut to open/close remote selection; defaults to `LeftAlt` (left Alt). The legacy setting name and existing saved shortcuts are preserved.
+
+Press the shortcut once to open a centered Forsaken Power radial. It stays open after
+you release the key. Point at a power and left-click to select it; confirmation occurs
+on mouse release. Press the shortcut again, right-click, press Escape or click the center
+to close without changing the power. There is no hold delay or short-press cycling.
+Selection does not activate the power or reset its cooldown.
+The menu uses the current personal boss-stone unlocks and rechecks them before selection.
+Pointing toward a power shows its localized effects beside that icon; the power name
+appears only in the radial center. The panel omits the tooltip's introductory lore
+while retaining current stat lines and duration from the game, BossRules or other mods.
+Active sailing, taming and incoming collision-damage attributes have concise effect lines.
+It hides in the center or when the menu closes; pointing at a power again refreshes
+its description. Long effect lists are fitted to the screen.
+
+This menu uses keyboard/mouse input. Vanilla radial/emote bindings take priority;
+if an existing shortcut is still `G` or overlaps a rebound vanilla radial key, choose a
+different shortcut such as `LeftAlt`. Existing bindings are never changed automatically.
+Building placement prevents opening the radial. Chat, other menus, focus loss, death, teleporting, sleep, player/HUD
+replacement and changes to the shortcut cancel the pending selection. A fresh press is
+required after cancellation. Vanilla radial preferences and its last-used item are preserved.
 
 Console commands:
 

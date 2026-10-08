@@ -11,7 +11,14 @@ internal static class BossRulesLocalization
     internal const string MessageDespawnReminderKey = "bossrules_message_despawn_reminder";
     internal const string MessageDespawnCanceledKey = "bossrules_message_despawn_canceled";
     internal const string MessageBossTamedPressureKey = "bossrules_message_boss_tamed_pressure";
-    internal const string MessageForsakenPowerRotateKey = "bossrules_message_forsaken_power_rotate";
+    internal const string MessageForsakenPowerOpenKey = "bossrules_message_forsaken_power_open";
+    internal const string MessageForsakenPowerMenuKey = "bossrules_message_forsaken_power_menu";
+    internal const string MessageForsakenPowerControlsKey = "bossrules_message_forsaken_power_controls";
+    internal const string MessageForsakenPowerSelectedKey = "bossrules_message_forsaken_power_selected";
+    internal const string MessageForsakenPowerNoneKey = "bossrules_message_forsaken_power_none";
+    internal const string EffectSailingKey = "bossrules_effect_sailing";
+    internal const string EffectTamingKey = "bossrules_effect_taming";
+    internal const string EffectCollisionKey = "bossrules_effect_collision";
 
     private static readonly Dictionary<string, string> EnglishDefaults =
         new(StringComparer.Ordinal)
@@ -24,8 +31,14 @@ internal static class BossRulesLocalization
                 "{name} despawn canceled.",
             [MessageBossTamedPressureKey] =
                 "Tamed creatures near a boss are weakened.",
-            [MessageForsakenPowerRotateKey] =
-                "Rotate"
+            [MessageForsakenPowerOpenKey] = "Choose power",
+            [MessageForsakenPowerMenuKey] = "Forsaken Powers",
+            [MessageForsakenPowerControlsKey] = "LMB: select\n{key} / RMB / Esc: close",
+            [MessageForsakenPowerSelectedKey] = "Forsaken Power: {name}",
+            [MessageForsakenPowerNoneKey] = "No unlocked Forsaken Powers available.",
+            [EffectSailingKey] = "Tailwind while sailing",
+            [EffectTamingKey] = "Faster taming of nearby creatures",
+            [EffectCollisionKey] = "Incoming collision damage: <color=orange>×2</color>"
         };
 
     private static readonly Dictionary<string, string> EnglishNameCache =

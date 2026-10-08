@@ -1,3 +1,11 @@
+## 1.1.5
+
+- Replace remote power cycling with a Forsaken Power radial: press the shortcut once to open, point at a power and left-click to select. The menu stays open after releasing the shortcut. Press it again, right-click, press Escape or click the center to cancel. No hold delay or short-press cycling is required.
+- Show localized effects beside the selected power's icon, keeping its name only in the radial center. Omit introductory lore while retaining current stat lines and duration; describe active sailing, taming and incoming collision-damage attributes with concise English/Korean text.
+- Initialize the native radial on first use without requiring a prior vanilla G/T menu opening. Support the vanilla Text-only tooltip and release session UI/input overrides when closing, losing focus, changing settings or replacing the player/HUD.
+- Preserve personally unlocked powers, saved shortcuts and the `LeftAlt` default. The existing `Rotate Forsaken Power Shortcut` setting name is retained. Selection does not activate a power or reset its cooldown; vanilla radial shortcuts take priority when bindings overlap.
+- Update the package icon. Update BossRules on the host/server and all clients to the same version.
+
 ## 1.1.4
 
 - Change the default `Rotate Forsaken Power Shortcut` from `G` to `LeftAlt` (left Alt).
