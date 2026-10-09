@@ -27,7 +27,7 @@ internal static class BossRulesConfig
         _rotateForsakenPowerShortcut = plugin.BindConfigEntry(
             "2 - Forsaken & Altars",
             "Rotate Forsaken Power Shortcut",
-            new KeyboardShortcut(KeyCode.LeftAlt),
+            new KeyboardShortcut(KeyCode.K),
             "Press once to open the Forsaken Power radial, then left-click a power to select it. Press the shortcut again, Escape, or right-click to cancel; a center click also cancels. The menu stays open after releasing the shortcut. Vanilla radial shortcuts take priority. This setting is client-side only; the legacy setting name is retained to preserve saved bindings.",
             synchronizedSetting: false,
             configManagerOrder: 600);

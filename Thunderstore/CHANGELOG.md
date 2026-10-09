@@ -1,3 +1,9 @@
+## 1.1.6
+
+- Change the default `Rotate Forsaken Power Shortcut` from `LeftAlt` to `K` for opening and closing the Forsaken Power radial.
+- Existing saved shortcuts are preserved. To use `K` with an existing configuration, change this client-side setting to `K` or reset it to its default.
+- Update BossRules on the host/server and all clients to the same version.
+
 ## 1.1.5
 
 - Replace remote power cycling with a Forsaken Power radial: press the shortcut once to open, point at a power and left-click to select. The menu stays open after releasing the shortcut. Press it again, right-click, press Escape or click the center to cancel. No hold delay or short-press cycling is required.

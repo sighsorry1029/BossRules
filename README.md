@@ -261,7 +261,7 @@ BossRules owns personalized boss stones and remote Forsaken Power selection.
 
 - `Personalized Boss Stones`: each player keeps their own unlocked boss stone powers.
 - `Remote Forsaken Power Selection`: players can select unlocked powers without returning to the Start Temple.
-- `Rotate Forsaken Power Shortcut`: client-only shortcut to open/close remote selection; defaults to `LeftAlt` (left Alt). The legacy setting name and existing saved shortcuts are preserved.
+- `Rotate Forsaken Power Shortcut`: client-only shortcut to open/close remote selection; defaults to `K`. The legacy setting name and existing saved shortcuts are preserved.
 
 Press the shortcut once to open a centered Forsaken Power radial. It stays open after
 you release the key. Point at a power and left-click to select it; confirmation occurs
@@ -278,7 +278,7 @@ its description. Long effect lists are fitted to the screen.
 
 This menu uses keyboard/mouse input. Vanilla radial/emote bindings take priority;
 if an existing shortcut is still `G` or overlaps a rebound vanilla radial key, choose a
-different shortcut such as `LeftAlt`. Existing bindings are never changed automatically.
+different shortcut such as `K`. Existing bindings are never changed automatically.
 Building placement prevents opening the radial. Chat, other menus, focus loss, death, teleporting, sleep, player/HUD
 replacement and changes to the shortcut cancel the pending selection. A fresh press is
 required after cancellation. Vanilla radial preferences and its last-used item are preserved.
