@@ -18,6 +18,7 @@ internal static partial class AltarRuntime
     private static bool _pendingGameDataReapply;
     private static int _configurationGeneration;
     private static float _nextQueenDungeonRoomContextRetryAt;
+    private static bool _hasAppliedAltarOverrides;
 
     private sealed class AuthoredItemStandSlotTemplate
     {
@@ -95,6 +96,7 @@ internal static partial class AltarRuntime
             AltarLocationResolver.ResetRuntimeState();
             QueenDungeonAltarSupport.ResetRuntimeState();
             _pendingGameDataReapply = false;
+            _hasAppliedAltarOverrides = false;
         }
     }
 
@@ -551,6 +553,16 @@ internal static partial class AltarRuntime
             return;
         }
 
+        bool altarRulesEnabled = BossRulesConfig.IsAltarRulesEnabled();
+        ActiveEntriesByPrefab.TryGetValue(normalizedPrefab, out List<AltarConfigurationEntry>? entries);
+        // Before the first override there is nothing to restore. Afterwards keep
+        // the existing path: a root may contain children edited under another
+        // prefab name or a nested/loose context, even when this name has no rule.
+        if ((!altarRulesEnabled || entries == null) && !_hasAppliedAltarOverrides)
+        {
+            return;
+        }
+
         if (!IsGameDataReady())
         {
             _pendingGameDataReapply = true;
@@ -563,8 +575,7 @@ internal static partial class AltarRuntime
         RestoreComponents(offeringBowls, childItemStands);
         OfferingBowl? offeringBowl = offeringBowls.FirstOrDefault(bowl => bowl != null);
 
-        if (!BossRulesConfig.IsAltarRulesEnabled() ||
-            !ActiveEntriesByPrefab.TryGetValue(normalizedPrefab, out List<AltarConfigurationEntry>? entries))
+        if (!altarRulesEnabled || entries == null)
         {
             MarkOfferingBowlsReconciled(offeringBowls, root, normalizedPrefab);
             return;
@@ -769,6 +780,7 @@ internal static partial class AltarRuntime
     // Apply configured OfferingBowl and ItemStand overrides.
     private static void ApplyOfferingBowl(OfferingBowl offeringBowl, AltarOfferingBowlDefinition entry, string prefabName)
     {
+        _hasAppliedAltarOverrides = true;
         string context = string.IsNullOrWhiteSpace(entry.Path)
             ? $"{prefabName}@offeringBowl"
             : $"{prefabName}@offeringBowl[{entry.Path}]";
@@ -952,6 +964,7 @@ internal static partial class AltarRuntime
 
     private static void ApplyItemStand(ItemStand itemStand, AltarItemStandDefinition entry, string prefabName)
     {
+        _hasAppliedAltarOverrides = true;
         string context = string.IsNullOrWhiteSpace(entry.Path)
             ? $"{prefabName}@itemStands"
             : $"{prefabName}@itemStands[{entry.Path}]";

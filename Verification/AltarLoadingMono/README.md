@@ -26,7 +26,7 @@ game manifest parser and production file eligibility check are used. It does not
 load bundles, launch Unity, modify a profile, or render/spawn objects. Expected
 malformed-manifest diagnostics disable the native Unity logger in this process.
 
-283 checks passed on the original 1.0.20 client and dedicated-server Mono/DLLs:
+293 checks passed on the original 1.0.20 client and dedicated-server Mono/DLLs:
 
 - All 264 installed MWL IDs are rejected before loader validity access; unrelated
   locations reach normal validation.
@@ -36,6 +36,27 @@ malformed-manifest diagnostics disable the native Unity logger in this process.
 - Missing/broken manifests defer without full fallback or repeated scans.
 - Explicit full export bypasses exclusions; runtime server and sync authority
   are required for automatic and explicit generation.
+- Fresh unconfigured roots skip bowl/stand traversal; configured MWL roots still
+  reach the normal path. Once an override begins, removed rules, disabled rules
+  and corrected prefab names still enter the existing restoration path.
+- Actual offering-count assignment records the cleanup obligation before Unity
+  component-state access; stand overrides record it as well. Reload retains the
+  obligation and shutdown clears it after existing cleanup.
+
+The runtime optimization uses one conservative flag, not a root cache. After any
+override begins, all later roots keep the old traversal behavior until shutdown.
+Location registration, name correction, Queen context and refund/RPC hooks are
+unchanged. An initially unconfigured root now captures its baseline at its first
+override, so later removal restores the values immediately preceding that override
+(including any other mod's changes in the meantime), rather than an earlier eager
+snapshot. Both source and deployed Debug DLL have SHA-256
+`F0CCBD46FB58901E12B713E32379807202122A91C00B663A35C691BA4A70BBB2`.
+
+The runtime fixture substitutes scene traversal with empty arrays and observes
+restore/mark calls; it proves control-flow preservation, not actual Unity field
+restoration, nested-object lifecycle or paid/free summon behavior. The small
+offering-count mutation runs until the component-state boundary; no native state
+component is created by the fixture.
 
 ```powershell
 dotnet build BossRules.sln -c Debug -p:DeployToGame=true

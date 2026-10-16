@@ -72,6 +72,8 @@ With More World Locations AIO installed, automatic reference generation skips it
 
 For all locations, run `bossrules:reference altar` on the host or dedicated-server console after the world has loaded. This explicit full scan can pause the game/server and use substantial memory. Remote clients do not perform location reference scans.
 
+With no altar overrides applied, unconfigured locations skip recursive altar component scans. Once an override begins, BossRules retains its existing restoration path for subsequent locations. Locations remain registered for live YAML changes; a newly configured altar captures its baseline immediately before its first override.
+
 When a location contains multiple `OfferingBowl` components, the generated reference writes one row per bowl with an `offeringBowl.path`. Single-bowl locations keep the compact pathless format. Existing pathless overrides remain compatible and select the first bowl, while an explicit missing path skips that row.
 
 BossRules intentionally does not own general location editing, object drops, runestone pins, or vegvisir rewards.

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -21,6 +22,9 @@ internal static class Program
     private static bool Server = true, Authority = true;
     private static int Checks, Builds, Writes, ValidityQueries;
     private static HashSet<AssetID>? LastExclusions;
+    private static Type AltarRuntime = null!;
+    private static bool AltarEnabled = true;
+    private static int BowlScans, StandScans, Restores;
 
     private static int Main(string[] args)
     {
@@ -56,12 +60,71 @@ internal static class Program
         try
         {
             CheckAutomaticPolicy(plugin, manifestPath, scratch, manifest!.m_assetToLocationMap.Keys.ToList());
+            CheckRuntimeTraversal(plugin);
             System.Console.WriteLine($"PASS: {Checks} altar loading checks; {manifest.AssetCount} MWL asset IDs. Original parser and compiled plugin decisions; native scene/scan/write boundaries substituted. No Unity world or performance measurement.");
         }
         finally
         {
             Directory.Delete(scratch, recursive: true);
         }
+    }
+
+    private static void CheckRuntimeTraversal(Assembly plugin)
+    {
+        AltarRuntime = plugin.GetType("BossRules.AltarRuntime", true)!;
+        FieldInfo applied = AltarRuntime.GetField("_hasAppliedAltarOverrides", Static)!;
+        var entries = (IDictionary)AltarRuntime.GetField("ActiveEntriesByPrefab", Static)!.GetValue(null)!;
+        var root = (UnityEngine.Transform)FormatterServices.GetUninitializedObject(typeof(UnityEngine.Transform));
+        MethodInfo reconcile = Copy(AltarRuntime.GetMethod("ReconcileRootLocked", Static)!);
+        void Reconcile(string name) => reconcile.Invoke(null, new object[] { root, name });
+        void ResetCounts() { BowlScans = StandScans = Restores = 0; }
+        entries.Clear(); applied.SetValue(null, false);
+        Reconcile("MWL_Unconfigured"); Reconcile("Vanilla_Unconfigured");
+        Check(BowlScans == 0 && StandScans == 0 && Restores == 0, "fresh unconfigured roots do not traverse altar components");
+
+        Type entryType = plugin.GetType("BossRules.AltarConfigurationEntry", true)!;
+        Type bowlDefinition = plugin.GetType("BossRules.AltarOfferingBowlDefinition", true)!;
+        var bucket = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(entryType))!;
+        object entry = Activator.CreateInstance(entryType)!;
+        object definition = Activator.CreateInstance(bowlDefinition)!;
+        bowlDefinition.GetProperty("BossItems")!.SetValue(definition, (int?)7);
+        entryType.GetProperty("OfferingBowl")!.SetValue(entry, definition);
+        bucket.Add(entry); entries.Add("MWL_Configured", bucket);
+        Reconcile("MWL_Configured");
+        Check(BowlScans == 1 && StandScans == 1 && Restores == 1, "new MWL override remains eligible for normal traversal");
+        ResetCounts(); AltarEnabled = false; Reconcile("MWL_Configured");
+        Check(BowlScans == 0 && StandScans == 0, "disabled rules with no prior edits avoid traversal");
+        AltarEnabled = true;
+
+        // Execute actual field assignment, stopping only at the Unity component-state boundary.
+        var bowl = (OfferingBowl)FormatterServices.GetUninitializedObject(typeof(OfferingBowl));
+        StopAtComponentState(Copy(AltarRuntime.GetMethod("ApplyOfferingBowl", Static)!), bowl, definition, "MWL_Configured");
+        Check(bowl.m_bossItems == 7 && (bool)applied.GetValue(null)!, "offering mutation records restoration obligation before state access");
+        entries.Clear(); ResetCounts(); Reconcile("Corrected_Unconfigured_Name");
+        Check(BowlScans == 1 && StandScans == 1 && Restores == 1, "removed rule or corrected root name retains restoration traversal");
+        AltarEnabled = false; Reconcile("Corrected_Unconfigured_Name");
+        Check(Restores == 2, "disabling rules after edits retains restoration traversal");
+        AltarEnabled = true;
+
+        object emptyEntries = Activator.CreateInstance(typeof(List<>).MakeGenericType(entryType))!;
+        AltarRuntime.GetMethod("Reload", Static)!.Invoke(null, new[] { emptyEntries });
+        Check((bool)applied.GetValue(null)!, "YAML reload cannot discard prior restoration obligations");
+        AltarRuntime.GetMethod("Shutdown", Static)!.Invoke(null, null);
+        Check(!(bool)applied.GetValue(null)!, "shutdown clears the guard after existing cleanup");
+
+        Type standDefinition = plugin.GetType("BossRules.AltarItemStandDefinition", true)!;
+        var stand = (ItemStand)FormatterServices.GetUninitializedObject(typeof(ItemStand));
+        StopAtComponentState(Copy(AltarRuntime.GetMethod("ApplyItemStand", Static)!), stand, Activator.CreateInstance(standDefinition)!, "MWL_Configured");
+        Check((bool)applied.GetValue(null)!, "stand overrides also retain restoration traversal, including interrupted application");
+        AltarRuntime.GetMethod("Shutdown", Static)!.Invoke(null, null);
+        ResetCounts(); Reconcile("MWL_Unconfigured");
+        Check(BowlScans == 0 && StandScans == 0, "fresh runtime restores the no-override fast path");
+    }
+
+    private static void StopAtComponentState(MethodInfo method, params object[] args)
+    {
+        try { method.Invoke(null, args); throw new InvalidOperationException("Missing state boundary"); }
+        catch (TargetInvocationException ex) when (ex.GetBaseException().Message == "fixture component state") { }
     }
 
     private static void CheckAutomaticPolicy(Assembly plugin, string manifestPath, string scratch, List<AssetID> ids)
@@ -153,7 +216,7 @@ internal static class Program
         using var body = new DynamicMethodDefinition(method);
         typeof(DynamicMethodDefinition).GetProperty(nameof(DynamicMethodDefinition.OriginalMethod))!.SetValue(body, null);
         body.OwnerType = typeof(Program);
-        foreach (var instruction in body.Definition.Body.Instructions)
+        foreach (var instruction in body.Definition.Body.Instructions.ToArray())
         {
             if (!(instruction.Operand is MethodReference target)) continue;
             string type = target.DeclaringType.FullName;
@@ -166,14 +229,29 @@ internal static class Program
                 "IsQueenDungeonReferenceDataReady" => nameof(Ready),
                 "BuildReferenceConfigurationContent" => nameof(RecordScan),
                 "WriteReferenceConfigurationFile" => nameof(RecordWrite), _ => null
+            } : type == "BossRules.AltarRuntime" ? target.Name switch
+            {
+                "IsGameDataReady" => nameof(Ready), "RestoreComponents" => nameof(RecordRestore),
+                "MarkOfferingBowlsReconciled" => nameof(RecordMark),
+                "GetOrAddOfferingBowlRuntimeState" => nameof(StopState),
+                "GetOrAddItemStandRuntimeState" => nameof(StopState), _ => null
             } : type == "ZoneSystem" && target.Name == "get_instance" ? nameof(GetWorld)
+                : type == "BossRules.BossRulesConfig" && target.Name == "IsAltarRulesEnabled" ? nameof(IsAltarEnabled)
+                : type == "UnityEngine.Component" && target.Name == "GetComponentsInChildren" && target is GenericInstanceMethod generic
+                    ? (generic.GenericArguments[0].Name == "OfferingBowl" ? nameof(ScanBowls) : nameof(ScanStands))
                 : type == "UnityEngine.Time" ? nameof(Clock)
                 : type == "UnityEngine.Object" && target.Name == "op_Equality" ? nameof(SameObject)
+                : type == "UnityEngine.Object" && target.Name == "op_Inequality" ? nameof(DifferentObject)
                 : type.StartsWith("SoftReferenceableAssets.SoftReference`1") && target.Name == "get_IsValid" ? nameof(RecordValidity)
                 : null;
             if (boundary == null) continue;
             instruction.OpCode = Mono.Cecil.Cil.OpCodes.Call;
             instruction.Operand = body.Module.ImportReference(typeof(Program).GetMethod(boundary, Static)!);
+            if (boundary == nameof(StopState))
+            {
+                body.Definition.Body.GetILProcessor().InsertAfter(instruction,
+                    Mono.Cecil.Cil.Instruction.Create(Mono.Cecil.Cil.OpCodes.Castclass, body.Module.ImportReference(target.ReturnType)));
+            }
         }
         return body.Generate();
     }
@@ -184,10 +262,17 @@ internal static class Program
     private static string GetReferencePath() => ReferencePath;
     private static ZoneSystem GetWorld() => World;
     private static bool SameObject(UnityEngine.Object? a, UnityEngine.Object? b) => ReferenceEquals(a, b);
+    private static bool DifferentObject(UnityEngine.Object? a, UnityEngine.Object? b) => !ReferenceEquals(a, b);
     private static bool RecordValidity(ref SoftReference<UnityEngine.GameObject> prefab) { ValidityQueries++; return false; }
     private static string RecordScan(out int count, HashSet<AssetID>? exclusions)
     {
         count = 1; Builds++; LastExclusions = exclusions; return "fixture content";
     }
     private static void RecordWrite(string content) => Writes++;
+    private static bool IsAltarEnabled() => AltarEnabled;
+    private static OfferingBowl[] ScanBowls(UnityEngine.Component root, bool inactive) { BowlScans++; return Array.Empty<OfferingBowl>(); }
+    private static ItemStand[] ScanStands(UnityEngine.Component root, bool inactive) { StandScans++; return Array.Empty<ItemStand>(); }
+    private static void RecordRestore(IEnumerable<OfferingBowl> bowls, IEnumerable<ItemStand> stands) => Restores++;
+    private static void RecordMark(IEnumerable<OfferingBowl> bowls, UnityEngine.Transform root, string prefab) { }
+    private static object StopState(object component) => throw new InvalidOperationException("fixture component state");
 }
