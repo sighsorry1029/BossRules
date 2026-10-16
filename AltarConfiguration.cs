@@ -278,7 +278,7 @@ internal static class AltarConfigurationFiles
         return builder.ToString();
     }
 
-    private static string BuildReferencePlaceholderYaml()
+    internal static string BuildReferencePlaceholderYaml()
     {
         StringBuilder builder = new();
         builder.AppendLine("# BossRules altar reference");

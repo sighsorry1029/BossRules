@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using BepInEx.Bootstrap;
+using SoftReferenceableAssets;
 using UnityEngine;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
@@ -106,6 +108,8 @@ internal sealed class FlowStringListDefinition : IYamlConvertible
 
 internal static class AltarReferenceGenerator
 {
+    private const string MoreWorldLocationsGuid = "warpalicious.More_World_Locations_AIO";
+    private const string PartialReferenceHeader = "# BossRules location scan: automatic-mwl-excluded-v1";
     private static readonly ISerializer Serializer = new SerializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull | DefaultValuesHandling.OmitDefaults)
@@ -178,15 +182,31 @@ internal static class AltarReferenceGenerator
             return;
         }
 
-        if (!IsQueenDungeonReferenceDataReady())
-        {
-            _nextAutoRefreshAttemptAt = now + AutoRefreshIdleRetryDelaySeconds;
-            return;
-        }
-
         try
         {
-            string content = BuildReferenceConfigurationContent(out int entryCount);
+            if (!TryGetAutomaticScanExclusions(out HashSet<AssetID>? excludedAssets))
+            {
+                // An unreadable MWL manifest must not fall back to loading every location.
+                _autoRefreshDone = true;
+                return;
+            }
+
+            if (excludedAssets != null && !CanWritePartialReference(BossRulesPlugin.AltarReferenceYamlFilePath))
+            {
+                BossRulesPlugin.BossRulesLogger.LogInfo(
+                    "Preserved the existing full altar reference. Automatic MWL scanning is restricted; " +
+                    "use bossrules:reference altar for an explicit full refresh.");
+                _autoRefreshDone = true;
+                return;
+            }
+
+            if (!IsQueenDungeonReferenceDataReady())
+            {
+                _nextAutoRefreshAttemptAt = now + AutoRefreshIdleRetryDelaySeconds;
+                return;
+            }
+
+            string content = BuildReferenceConfigurationContent(out int entryCount, excludedAssets);
             if (_queenDungeonReferenceCaptureFailed)
             {
                 _nextAutoRefreshAttemptAt = now + AutoRefreshRetryDelaySeconds;
@@ -210,6 +230,88 @@ internal static class AltarReferenceGenerator
         }
     }
 
+    private static bool TryGetAutomaticScanExclusions(out HashSet<AssetID>? excludedAssets)
+    {
+        excludedAssets = null;
+        if (!Chainloader.PluginInfos.TryGetValue(MoreWorldLocationsGuid, out var plugin))
+        {
+            return true;
+        }
+
+        try
+        {
+            string directory = Path.GetDirectoryName(plugin.Location)!;
+            string? manifestPath = Directory.EnumerateFiles(directory)
+                .FirstOrDefault(path => string.Equals(Path.GetFileName(path), "assetBundleManifest_full", StringComparison.OrdinalIgnoreCase));
+            SoftReferenceableAssets.AssetBundleManifest? manifest = manifestPath == null
+                ? null
+                : SoftReferenceableAssets.AssetBundleManifest.DeserializeFromDisk(manifestPath);
+            if (manifest != null && manifest.AssetCount > 0)
+            {
+                excludedAssets = new HashSet<AssetID>(manifest.m_assetToLocationMap.Keys);
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            BossRulesPlugin.BossRulesLogger.LogWarning($"Could not read MWL reference-scan metadata. {FormatException(ex)}");
+        }
+
+        BossRulesPlugin.BossRulesLogger.LogWarning(
+            "MWL manifest unavailable: automatic altar reference generation is deferred for this world. " +
+            "Existing references and altar overrides are preserved. Use bossrules:reference altar for an explicit full scan.");
+        return false;
+    }
+
+    private static bool CanWritePartialReference(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return true;
+        }
+
+        using StreamReader reader = File.OpenText(path);
+        if (string.Equals(reader.ReadLine(), PartialReferenceHeader, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // Awake creates this empty placeholder even on a brand-new installation.
+        return string.Equals(File.ReadAllText(path), AltarConfigurationFiles.BuildReferencePlaceholderYaml(), StringComparison.Ordinal);
+    }
+
+    internal static string ExportFullReference()
+    {
+        if (!BossRulesPlugin.IsRuntimeServer() || !BossRulesPlugin.IsSourceOfTruth)
+        {
+            return "Run this command on the host or dedicated server; remote clients do not scan location references.";
+        }
+
+        try
+        {
+            if (ZoneSystem.instance?.m_locations is not { Count: > 0 } || !IsQueenDungeonReferenceDataReady())
+            {
+                return "Location and dungeon data are not ready. Try again after the world has loaded.";
+            }
+
+            BossRulesPlugin.BossRulesLogger.LogWarning(
+                "Full altar reference scan requested, including MWL interiors. This can pause the game/server and use substantial memory.");
+            string content = BuildReferenceConfigurationContent(out int entryCount, excludedAssets: null);
+            if (_queenDungeonReferenceCaptureFailed || entryCount == 0)
+            {
+                return "Altar reference capture is incomplete; the existing file was preserved.";
+            }
+
+            WriteReferenceConfigurationFile(content);
+            _autoRefreshDone = true;
+            return $"Full altar reference ready: {entryCount} entries at {BossRulesPlugin.AltarReferenceYamlFilePath}.";
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to export the altar reference. {FormatException(ex)}";
+        }
+    }
+
     private static string FormatException(Exception exception)
     {
         Exception root = exception;
@@ -226,16 +328,22 @@ internal static class AltarReferenceGenerator
         return $"{exception.GetType().Name}: {exception.Message}.";
     }
 
-    private static string BuildReferenceConfigurationContent(out int entryCount)
+    private static string BuildReferenceConfigurationContent(out int entryCount, HashSet<AssetID>? excludedAssets)
     {
         _queenDungeonReferenceDefinition = null;
         _queenDungeonReferenceCaptureAttempted = false;
         _queenDungeonReferenceCaptureFailed = false;
-        List<AltarReferenceEntry> entries = CaptureReferenceEntries()
+        List<AltarReferenceEntry> entries = CaptureReferenceEntries(excludedAssets)
             .ToList();
         entryCount = entries.Count;
 
         StringBuilder builder = new();
+        if (excludedAssets != null)
+        {
+            builder.AppendLine(PartialReferenceHeader);
+            builder.AppendLine("# MWL location interiors were not scanned automatically. Configured altar overrides still apply.");
+            builder.AppendLine("# Use bossrules:reference altar on the host/server for a full scan (can be expensive).");
+        }
         builder.AppendLine("# BossRules altar reference");
         builder.AppendLine("# Generated from loaded ZoneSystem location prefabs and supported nested dungeon rooms.");
         builder.AppendLine("# Copy rows to BossRules.altar.yml to override.");
@@ -310,7 +418,7 @@ internal static class AltarReferenceGenerator
             .Replace("\"", "\\\"");
     }
 
-    private static List<AltarReferenceEntry> CaptureReferenceEntries()
+    private static List<AltarReferenceEntry> CaptureReferenceEntries(HashSet<AssetID>? excludedAssets)
     {
         List<AltarReferenceEntry> entries = new();
         List<ZoneSystem.ZoneLocation> loadedLocationPrefabs = new();
@@ -321,6 +429,7 @@ internal static class AltarReferenceGenerator
             {
                 if (TryCaptureReferenceEntries(
                         location,
+                        excludedAssets,
                         capturedPrefabs,
                         loadedLocationPrefabs,
                         out IReadOnlyList<AltarReferenceEntry> locationEntries))
@@ -368,12 +477,14 @@ internal static class AltarReferenceGenerator
 
     private static bool TryCaptureReferenceEntries(
         ZoneSystem.ZoneLocation location,
+        HashSet<AssetID>? excludedAssets,
         HashSet<string> capturedPrefabs,
         ICollection<ZoneSystem.ZoneLocation> loadedLocationPrefabs,
         out IReadOnlyList<AltarReferenceEntry> entries)
     {
         entries = Array.Empty<AltarReferenceEntry>();
-        if (location == null || !location.m_prefab.IsValid)
+        // The manifest ID check precedes any loader access or prefab traversal.
+        if (location == null || excludedAssets?.Contains(location.m_prefab.m_assetID) == true || !location.m_prefab.IsValid)
         {
             return false;
         }

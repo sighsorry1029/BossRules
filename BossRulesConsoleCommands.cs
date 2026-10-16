@@ -6,6 +6,7 @@ internal static class BossRulesConsoleCommands
 {
     private const string InspectCommandName = "bossrules:inspect";
     private const string BossStoneCommandName = "bossrules:bossstone";
+    private const string ReferenceCommandName = "bossrules:reference";
 
     private static readonly List<string> InspectTabOptions = new()
     {
@@ -38,6 +39,14 @@ internal static class BossRulesConsoleCommands
             HandleBossStoneCommand,
             isCheat: true,
             optionsFetcher: GetBossStoneTabOptions,
+            onlyAdmin: true);
+        new Terminal.ConsoleCommand(
+            ReferenceCommandName,
+            "Generate full altar references, including MWL interiors. Syntax: bossrules:reference altar (host/server only; can be expensive).",
+            args => args.Context?.AddString(
+                args.Length == 2 && string.Equals(args[1], "altar", System.StringComparison.OrdinalIgnoreCase)
+                    ? AltarReferenceGenerator.ExportFullReference()
+                    : $"Syntax: {ReferenceCommandName} altar"),
             onlyAdmin: true);
     }
 

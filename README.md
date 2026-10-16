@@ -68,6 +68,10 @@ The release package includes `BossRules.English.yml` as an editable translation 
 
 Use the generated `BossRules.altar.reference.yml` to find real prefab names, item stand paths, and current altar values. Copy only the rows you want to override into `BossRules.altar.yml`.
 
+With More World Locations AIO installed, automatic reference generation skips its location interiors before loading their assets. New partial references are marked in the file; existing full references are preserved. This only limits automatic discovery: MWL overrides in `BossRules.altar.yml` still apply. If MWL's asset manifest cannot be read, automatic generation is deferred for that world instead of forcing a full scan.
+
+For all locations, run `bossrules:reference altar` on the host or dedicated-server console after the world has loaded. This explicit full scan can pause the game/server and use substantial memory. Remote clients do not perform location reference scans.
+
 When a location contains multiple `OfferingBowl` components, the generated reference writes one row per bowl with an `offeringBowl.path`. Single-bowl locations keep the compact pathless format. Existing pathless overrides remain compatible and select the first bowl, while an explicit missing path skips that row.
 
 BossRules intentionally does not own general location editing, object drops, runestone pins, or vegvisir rewards.
@@ -287,6 +291,7 @@ Console commands:
 
 - `bossrules:inspect bossstone`
 - `bossrules:bossstone reset <exactPlayerName>`
+- `bossrules:reference altar` (host/server administrator; full reference scan)
 
 ## Compatibility
 
