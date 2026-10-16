@@ -1,3 +1,11 @@
+## 1.1.7
+
+- Avoid eagerly loading More World Locations AIO assets during automatic altar reference generation. Preserve existing full references and mark newly generated partial references; configured MWL altar overrides still apply. If the MWL manifest cannot be read, defer automatic generation for that world instead of forcing a full scan.
+- Add `bossrules:reference altar` for an explicit full reference export on the host/server. This includes MWL locations and can pause the host/server while assets load. If no entries are captured or Queen altar capture is incomplete, preserve the existing reference file.
+- Skip unnecessary OfferingBowl and ItemStand traversal on unconfigured locations until the first altar override begins. Keep the existing restoration path after overrides begin, including live configuration removal or disabling. Newly configured altars capture their original values immediately before the first override.
+- These changes remove avoidable BossRules loading and traversal work; normal MWL zone loading remains. Actual loading-time and frame-time improvements have not yet been measured in-game.
+- Update BossRules on the host/server and all clients to the same version.
+
 ## 1.1.6
 
 - Change the default `Rotate Forsaken Power Shortcut` from `LeftAlt` to `K` for opening and closing the Forsaken Power radial.
