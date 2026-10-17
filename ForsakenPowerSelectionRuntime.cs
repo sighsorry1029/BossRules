@@ -264,6 +264,11 @@ internal static class ForsakenPowerSelectionRuntime
 
     private static bool ShouldShowHudHint(Hud hud, Player? player)
     {
+        if (!BossRulesConfig.ShouldShowForsakenPowerShortcutHint())
+        {
+            return false;
+        }
+
         KeyboardShortcut shortcut = BossRulesConfig.GetRotateForsakenPowerShortcut();
         if (!BossRulesConfig.IsRemoteForsakenPowerSelectionEnabled() ||
             player == null ||

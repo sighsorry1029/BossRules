@@ -17,6 +17,7 @@ internal static class BossRulesConfig
     private static ConfigEntry<BossRulesPlugin.Toggle> _perPlayerBossStones = null!;
     private static ConfigEntry<BossRulesPlugin.Toggle> _remoteForsakenPowerSelection = null!;
     private static ConfigEntry<KeyboardShortcut> _rotateForsakenPowerShortcut = null!;
+    private static ConfigEntry<BossRulesPlugin.Toggle> _showForsakenPowerShortcutHint = null!;
 
     internal static void Bind(BossRulesPlugin plugin)
     {
@@ -31,6 +32,13 @@ internal static class BossRulesConfig
             "Press once to open the Forsaken Power radial, then left-click a power to select it. Press the shortcut again, Escape, or right-click to cancel; a center click also cancels. The menu stays open after releasing the shortcut. Vanilla radial shortcuts take priority. This setting is client-side only; the legacy setting name is retained to preserve saved bindings.",
             synchronizedSetting: false,
             configManagerOrder: 600);
+        _showForsakenPowerShortcutHint = plugin.BindConfigEntry(
+            "2 - Forsaken & Altars",
+            "Show Forsaken Power Shortcut Hint",
+            BossRulesPlugin.Toggle.On,
+            "Show shortcut and selection-control hints below the Forsaken Power HUD icon. Turning this off keeps the shortcut, radial selection and radial effect descriptions enabled. This setting is client-side only.",
+            synchronizedSetting: false,
+            configManagerOrder: 590);
         _enableAltarRules = plugin.BindConfigEntry(
             "2 - Forsaken & Altars",
             "Enable Altar Rules",
@@ -126,4 +134,7 @@ internal static class BossRulesConfig
 
     internal static KeyboardShortcut GetRotateForsakenPowerShortcut() =>
         _rotateForsakenPowerShortcut?.Value ?? default;
+
+    internal static bool ShouldShowForsakenPowerShortcutHint() =>
+        _showForsakenPowerShortcutHint?.Value != BossRulesPlugin.Toggle.Off;
 }

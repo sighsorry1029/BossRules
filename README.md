@@ -268,6 +268,7 @@ BossRules owns personalized boss stones and remote Forsaken Power selection.
 - `Personalized Boss Stones`: each player keeps their own unlocked boss stone powers.
 - `Remote Forsaken Power Selection`: players can select unlocked powers without returning to the Start Temple.
 - `Rotate Forsaken Power Shortcut`: client-only shortcut to open/close remote selection; defaults to `K`. The legacy setting name and existing saved shortcuts are preserved.
+- `Show Forsaken Power Shortcut Hint`: client-only display setting, default `On`. Set it to `Off` to hide the shortcut and selection-control hints below the Forsaken Power HUD icon. The shortcut, radial selection and icon-side effect descriptions remain available, subject to the server's remote-selection setting. Changes apply on the next HUD update without restarting.
 
 Press the shortcut once to open a centered Forsaken Power radial. It stays open after
 you release the key. Point at a power and left-click to select it; confirmation occurs

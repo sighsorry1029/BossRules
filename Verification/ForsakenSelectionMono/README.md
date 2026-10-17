@@ -161,6 +161,31 @@ icon, 1.1.5 manifest and changelog; its DLL assembly version is 1.1.5.0. The ins
 default game plugin matches the 1.1.5 Debug DLL by SHA-256. No new game session or
 multiplayer run was performed for release verification.
 
+## 1.1.8 shortcut hint setting
+
+2026-10-18. Started from clean `main 026c6f0`. The new client-only
+`Show Forsaken Power Shortcut Hint` defaults to `On` and gates only
+`ShouldShowHudHint`. Existing hiding, instance reuse and shutdown cleanup are
+retained. Input, selection eligibility and radial effect descriptions are unchanged.
+
+The baseline and changed Debug builds/deployment and final Release build passed
+with zero warnings/errors. The existing 96 isolated checks passed on the installed
+original client Mono/DLLs for the baseline, changed Debug and final Release DLL.
+The same native internal-call notices described above appeared before and after
+the change. This fixture does not render or exercise the new visibility toggle.
+Source review and final DLL call-site inspection confirm its display-only scope.
+Version/merged-library metadata and all eight ZIP entries were verified.
+
+- Debug/deployed SHA-256: `6F7DAB406A37FCD855CD09742D1CF024A16E67BBD5DA9C40CD989B8364C93971`.
+- Release DLL SHA-256: `25D57C78A4B72B5D236D9C931735FC24F6C2CA701BF493D03F4C757F8C7A8BC8`.
+- `BossRules_v1.1.8.zip` SHA-256: `F332CCBBB21BA209ED86703D919055B8194684D44BF9779566B3DEEDC6A838BC`.
+
+Actual-game follow-up: toggle On/Off with the radial closed and open, confirm
+only the icon-below hints disappear/reappear, and verify shortcut selection and
+effect descriptions still work. Repeat after HUD recreation/rejoin and with the
+server's remote-selection feature disabled. No game session or multiplayer run
+was performed for this release.
+
 ## Remaining actual-game checks
 
 1. Restart the game and enter a world without ever opening vanilla G/T. Open directly

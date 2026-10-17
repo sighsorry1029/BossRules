@@ -1,3 +1,9 @@
+## 1.1.8
+
+- Add the client-only `Show Forsaken Power Shortcut Hint` setting, default `On`. Set it to `Off` to hide the shortcut and selection-control hints below the Forsaken Power HUD icon; changes apply on the next HUD update without restarting.
+- Keep the configured selection shortcut (default `K`), radial selection and radial effect descriptions available when hints are hidden. The server's remote-selection rules and existing saved shortcuts are unchanged.
+- Update BossRules on the host/server and all clients to the same version.
+
 ## 1.1.7
 
 - Avoid eagerly loading More World Locations AIO assets during automatic altar reference generation. Preserve existing full references and mark newly generated partial references; configured MWL altar overrides still apply. If the MWL manifest cannot be read, defer automatic generation for that world instead of forcing a full scan.
