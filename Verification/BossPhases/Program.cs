@@ -97,6 +97,34 @@ internal static class Program
         Check(Parse("despawn:\n  defaults: 32, 50\n  rules: [ 'Fader, 0, 20, false' ]").DespawnRules.Single().Refunds == false,
             "existing despawn format preserved");
     }
+    private static void TrackingEligibilityAfterReload()
+    {
+        Reset("bossPhases: [[First, Second]]\ndespawn:\n  rules: ['Configured, 20, 30']");
+        Prefab("AutoBoss");
+        Prefab("Second", false);
+        Prefab("Ordinary", false);
+
+        void CheckCached(string name, bool expected)
+        {
+            Check(BossRulesRuntime.TryGetCachedDespawnTrackingPrefabHashEligibility(name.GetStableHashCode(), out bool eligible)
+                  && eligible == expected, "cached tracking eligibility for " + name);
+        }
+
+        int phase = "Second".GetStableHashCode();
+        Check(!BossRulesRuntime.TryGetCachedDespawnTrackingPrefabHashEligibility(phase, out _), "cold observation defers decision");
+        Check(BossRulesRuntime.IsEligibleDespawnTrackingPrefabHash(phase), "phase prefab included on lookup rebuild");
+        CheckCached("AutoBoss", true);
+        CheckCached("Second", true);
+        CheckCached("Configured", true);
+        CheckCached("Ordinary", false);
+
+        BossRulesRuntime.Reload(Parse("bossPhases: []"));
+        Check(!BossRulesRuntime.TryGetCachedDespawnTrackingPrefabHashEligibility(phase, out _), "reload invalidates cached observation");
+        Check(!BossRulesRuntime.IsEligibleDespawnTrackingPrefabHash(phase), "removed phase excluded on rebuild");
+        CheckCached("Configured", false);
+        CheckCached("AutoBoss", true);
+    }
+
     private static (GameObject First, GameObject Second, GameObject Third) FrozenPrefabs()
     {
         var a = Prefab("FrozenKing"); var b = Prefab("FrozenKing_p2"); var c = Prefab("FrozenKing_p3");
@@ -261,7 +289,7 @@ internal static class Program
     }
     private static void Main(string[] args)
     {
-        Configuration(); DirectChain(); RagdollChain(); RejectionsAndLiveChanges();
+        Configuration(); TrackingEligibilityAfterReload(); DirectChain(); RagdollChain(); RejectionsAndLiveChanges();
         if(args.Length != 2) throw new ArgumentException("repository root, original assembly_valheim.dll");
         Metadata(args[0],args[1]);
         Console.WriteLine($"PASS: {Checks} source-linked phase/config/refund and original/final DLL metadata checks. No Unity world/network execution.");

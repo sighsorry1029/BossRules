@@ -21,7 +21,6 @@ internal static class BossRulesRuntime
         public Dictionary<string, CompiledDespawnRule> RulesByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<int, CompiledDespawnRule> RulesByPrefabHash { get; } = new();
         public Dictionary<int, string> PrefabNamesByHash { get; } = new();
-        public HashSet<int> EligiblePrefabHashes { get; } = new();
         public HashSet<int> PhasePrefabHashes { get; } = new();
         public HashSet<string> BootstrapPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
         public IReadOnlyList<string> BootstrapPrefabOrder { get; set; } = Array.Empty<string>();
@@ -119,7 +118,7 @@ internal static class BossRulesRuntime
             return false;
         }
 
-        eligible = _runtimeState.EligiblePrefabHashes.Contains(prefabHash);
+        eligible = _runtimeState.PrefabNamesByHash.ContainsKey(prefabHash);
         return true;
     }
 
@@ -131,7 +130,7 @@ internal static class BossRulesRuntime
         }
 
         EnsureRuntimeState();
-        return _runtimeState.EligiblePrefabHashes.Contains(prefabHash);
+        return _runtimeState.PrefabNamesByHash.ContainsKey(prefabHash);
     }
 
     internal static bool IsEligibleDespawnTrackingPrefabName(string prefabName)
@@ -390,7 +389,6 @@ internal static class BossRulesRuntime
             state.BootstrapPrefabs.Add(prefabName);
             int prefabHash = prefabName.GetStableHashCode();
             state.PrefabNamesByHash[prefabHash] = prefabName;
-            state.EligiblePrefabHashes.Add(prefabHash);
         }
 
         foreach (List<string> chain in configuration.BossPhases)
@@ -404,7 +402,6 @@ internal static class BossRulesRuntime
                 }
                 int prefabHash = prefabName.GetStableHashCode();
                 state.PhasePrefabHashes.Add(prefabHash);
-                state.EligiblePrefabHashes.Add(prefabHash);
                 state.PrefabNamesByHash[prefabHash] = prefabName;
                 state.BootstrapPrefabs.Add(prefabName);
             }
@@ -434,7 +431,6 @@ internal static class BossRulesRuntime
             state.RulesByPrefab[prefabName] = compiledRule;
             state.RulesByPrefabHash[prefabHash] = compiledRule;
             state.PrefabNamesByHash[prefabHash] = prefabName;
-            state.EligiblePrefabHashes.Add(prefabHash);
             state.BootstrapPrefabs.Add(prefabName);
         }
 
