@@ -85,15 +85,11 @@ internal static class ForsakenPowerRadial
         Session? session = _session;
         try
         {
-            if (session == null || !IsOpen || player != session.Player || !session.HasPointerSelection()) return;
-            RadialMenuElement selected = session.Radial.Selected;
-            foreach (Choice choice in session.Choices)
+            if (session == null || !IsOpen || player != session.Player) return;
+            Choice? choice = session.GetPointerChoice();
+            if (choice != null)
             {
-                if (choice.Element != null && choice.Element == selected)
-                {
-                    ForsakenPowerSelectionRuntime.TrySelectPower(player, choice.Power);
-                    break;
-                }
+                ForsakenPowerSelectionRuntime.TrySelectPower(player, choice.Power);
             }
         }
         finally { Close(); }
@@ -166,7 +162,7 @@ internal static class ForsakenPowerRadial
         internal readonly Hud Hud;
         internal readonly Player Player;
         internal readonly RadialBase Radial;
-        internal readonly List<Choice> Choices = new();
+        private readonly List<Choice> _choices = new();
         private readonly List<RadialMenuElement> _elements = new();
         private readonly List<Material> _materials = new();
         internal ForsakenPowerRadialRoot? Root;
@@ -203,7 +199,7 @@ internal static class ForsakenPowerRadial
                 StatusEffect? effect = ObjectDB.instance?.GetStatusEffect(power.GetStableHashCode());
                 if (effect == null) continue;
                 Choice choice = new(power, effect.m_icon);
-                Choices.Add(choice);
+                _choices.Add(choice);
                 choice.Element = UnityEngine.Object.Instantiate(RadialData.SO.GroupElement);
                 _elements.Add(choice.Element);
                 _materials.Add(choice.Element.BackgroundMaterial);
@@ -236,7 +232,16 @@ internal static class ForsakenPowerRadial
             Radial.GetControllerDirection = NoDirection;
         }
 
-        internal bool HasPointerSelection() => MouseDirection() != Vector2.zero;
+        internal Choice? GetPointerChoice()
+        {
+            if (MouseDirection() == Vector2.zero) return null;
+            RadialMenuElement selected = Radial.Selected;
+            foreach (Choice choice in _choices)
+            {
+                if (choice.Element != null && choice.Element == selected) return choice;
+            }
+            return null;
+        }
 
         private Vector2 MouseDirection()
         {
@@ -247,12 +252,7 @@ internal static class ForsakenPowerRadial
         internal void UpdateDescription()
         {
             if (_descriptionUnavailable) return;
-            Choice? selected = null;
-            if (HasPointerSelection())
-            {
-                foreach (Choice choice in Choices)
-                    if (choice.Element != null && choice.Element == Radial.Selected) { selected = choice; break; }
-            }
+            Choice? selected = GetPointerChoice();
             if (selected == null)
             {
                 _describedChoice = null;
@@ -309,7 +309,7 @@ internal static class ForsakenPowerRadial
                 if (material != null) UnityEngine.Object.Destroy(material);
             _elements.Clear();
             _materials.Clear();
-            Choices.Clear();
+            _choices.Clear();
             if (Root != null) UnityEngine.Object.Destroy(Root);
         }
     }
