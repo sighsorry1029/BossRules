@@ -101,6 +101,12 @@ internal static partial class DespawnRulesManager
 
     internal static void ResetRuntimeState()
     {
+        ClearTrackingState();
+        DespawnClock.Restart();
+    }
+
+    private static void ClearTrackingState()
+    {
         TrackedDespawnTargets.Clear();
         ScheduledDespawnChecks.Clear();
         PendingDespawnDetachPersists.Clear();
@@ -112,7 +118,6 @@ internal static partial class DespawnRulesManager
         _nextDespawnTrackingRefreshAt = 0f;
         MarkBootstrapScanDirty();
         _lastObservedDespawnLookupVersion = -1;
-        DespawnClock.Restart();
     }
 
     internal static void ExecuteServerTick()
@@ -128,17 +133,7 @@ internal static partial class DespawnRulesManager
 
         if (!BossRulesConfig.IsDespawnRulesEnabled())
         {
-            TrackedDespawnTargets.Clear();
-            PendingDespawnRemovals.Clear();
-            ScheduledDespawnChecks.Clear();
-            PendingDespawnObservations.Clear();
-            PendingDespawnObservationRemovals.Clear();
-            PendingDespawnObservationUpdates.Clear();
-            PendingDespawnDetachPersists.Clear();
-            PendingDespawnDetachPersistRemovals.Clear();
-            _nextDespawnTrackingRefreshAt = 0f;
-            MarkBootstrapScanDirty();
-            _lastObservedDespawnLookupVersion = -1;
+            ClearTrackingState();
             return;
         }
 
