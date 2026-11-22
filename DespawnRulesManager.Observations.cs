@@ -365,7 +365,7 @@ internal static partial class DespawnRulesManager
                 out prefabName,
                 out float? rangeOverride,
                 out float? delayOverride,
-                out IReadOnlyCollection<DespawnRefundDrop> refunds))
+                out bool refundsEnabled))
         {
             return null;
         }
@@ -375,7 +375,7 @@ internal static partial class DespawnRulesManager
             zdo,
             rangeOverride,
             delayOverride,
-            refunds);
+            refundsEnabled);
     }
 
     private static TrackedDespawnState ApplyObservationResolved(
@@ -383,7 +383,7 @@ internal static partial class DespawnRulesManager
         ZDO zdo,
         float? rangeOverride,
         float? delayOverride,
-        IReadOnlyCollection<DespawnRefundDrop> refunds)
+        bool refundsEnabled)
     {
         TrackedDespawnState state = GetOrCreateTrackedDespawnState(zdo.m_uid);
         Character? loadedCharacter = TryGetLoadedTrackedCharacter(zdo);
@@ -405,11 +405,7 @@ internal static partial class DespawnRulesManager
 
         state.RangeOverride = rangeOverride;
         state.DelayOverride = delayOverride;
-        state.Refunds.Clear();
-        if (refunds != null)
-        {
-            state.Refunds.AddRange(refunds);
-        }
+        state.RefundsEnabled = refundsEnabled;
 
         PrimeTrackedDespawnInterestIfNeeded(state, interestPoint);
         ScheduleTrackedDespawnCheck(zdo.m_uid, state, GetCurrentDespawnClockSeconds());

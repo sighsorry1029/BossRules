@@ -80,10 +80,10 @@ internal static class Program
         GameObject next = Spawn(prefab); Complete(source, next); return next;
     }
     private static bool Refunds(GameObject go, out IReadOnlyCollection<DespawnRefundDrop> refunds) =>
-        AltarRuntime.TryResolveAltarSummonRefunds(Data(go), out refunds);
-    private static bool Tracked(GameObject go, out IReadOnlyCollection<DespawnRefundDrop> refunds) =>
+        AltarRuntime.TryResolveAltarSummonRefunds(Data(go), out refunds, out _) && refunds.Count > 0;
+    private static bool Tracked(GameObject go) =>
         BossRulesRuntime.TryResolveDespawnTrackingRule(Data(go), Data(go).GetPrefab(), Utils.GetPrefabName(go),
-            out _, out _, out _, out refunds);
+            out _, out _, out _, out _);
 
     private static void Configuration()
     {
@@ -97,6 +97,27 @@ internal static class Program
         Check(Parse("despawn:\n  defaults: 32, 50\n  rules: [ 'Fader, 0, 20, false' ]").DespawnRules.Single().Refunds == false,
             "existing despawn format preserved");
     }
+    private static void RefundResolutionAndConsumption()
+    {
+        Reset();
+        GameObject first = Summon(Prefab("FrozenKing"));
+        ZDO source = Data(first);
+        int key = "BossRules.altar_refunds".GetStableHashCode();
+        source.Set(key, "HatefulBlood:3;OtherOffering:2");
+        Check(!AltarRuntime.TryResolveAltarSummonRefunds(source, out var unresolved, out var error)
+              && unresolved.Count == 0 && error.Contains("OtherOffering"), "one unavailable item defers the entire paid refund");
+        GameObject item = new() { name = "OtherOffering" };
+        item.Add(new ItemDrop());
+        ObjectDB.instance.m_items.Add(item);
+        Check(AltarRuntime.TryResolveAltarSummonRefunds(source, out var resolved, out _)
+              && resolved.Select(r => r.Amount).SequenceEqual(new[] { 3, 2 }), "retry resolves the original quantities");
+        AltarRuntime.ClearPaidAltarRefunds(source);
+        ZDO next = Data(Spawn(Prefab("FrozenKing_p2")));
+        Check(AltarRuntime.TryTransferAltarSummon(source.Reload(), next), "altar provenance can transfer after payout");
+        Check(AltarRuntime.TryResolveAltarSummonRefunds(next, out var consumed, out _)
+              && consumed.Count == 0, "reloading or transferring a paid-out source cannot restore its cost");
+    }
+
     private static void TrackingEligibilityAfterReload()
     {
         Reset("bossPhases: [[First, Second]]\ndespawn:\n  rules: ['Configured, 20, 30']");
@@ -167,13 +188,13 @@ internal static class Program
         b.GetComponent<Character>().m_deathEffects = Effects(bridge);
         bridge.GetComponent<Ragdoll>().m_removeEffect = Effects(c);
         var first = Summon(a);
-        Check(Tracked(first,out var refunds) && refunds.Single().Amount == 3, "non-boss altar first phase is tracked");
-        Check(!Tracked(Spawn(a),out _), "natural non-boss first phase excluded");
+        Check(Tracked(first) && Refunds(first, out var refunds) && refunds.Single().Amount == 3, "non-boss altar first phase is tracked");
+        Check(!Tracked(Spawn(a)), "natural non-boss first phase excluded");
         var second = Advance(first,b);
-        Check(Tracked(second,out _) && !second.GetComponent<Character>().IsBoss(), "non-boss next phase tracked without changing game flag");
+        Check(Tracked(second) && !second.GetComponent<Character>().IsBoss(), "non-boss next phase tracked without changing game flag");
         var intermediate = Advance(second,bridge);
         Check(AltarRuntime.IsAltarSummoned(Data(intermediate)), "hidden bridge inherits record");
-        Check(!Tracked(intermediate,out _), "bridge is not a despawn target");
+        Check(!Tracked(intermediate), "bridge is not a despawn target");
         intermediate.GetComponent<ZNetView>().Data = Data(intermediate).Reload();
         Data(intermediate).Owner = false;
         Check(!AltarRuntime.IsAltarSummoned(Data(Advance(intermediate,c))), "nonowner cannot hand off bridge");
@@ -181,12 +202,12 @@ internal static class Program
         var third = Advance(intermediate,c);
         Check(Refunds(third,out var final) && final.Single().Amount == 3, "bridge resumes after simulated owner change/reload");
         Check(!Refunds(second,out _) && !Refunds(intermediate,out _), "both earlier stages consumed");
-        Check(Tracked(third,out _) && !AltarRuntime.IsAltarSummoned(Data(Advance(intermediate,c))), "queen3 eligible and bridge cannot duplicate");
+        Check(Tracked(third) && !AltarRuntime.IsAltarSummoned(Data(Advance(intermediate,c))), "queen3 eligible and bridge cannot duplicate");
         var free = Advance(Advance(Advance(Summon(a,true),b),bridge),c);
         Check(AltarRuntime.IsAltarSummoned(Data(free)) && !Refunds(free,out _), "free cost through hidden bridge");
         BossRulesRuntime.Reload(Parse("despawn:\n  rules: ['ML_AshHuldraQueen3, 0, 15, false']"));
         Check(BossRulesRuntime.TryResolveDespawnTrackingRule(Data(third),Data(third).GetPrefab(),c.name,out _,out float? range,out _,out var denied)
-            && range == 0 && denied.Count == 0, "explicit phase range/refund overrides preserved");
+            && range == 0 && !denied, "explicit phase range/refund overrides preserved");
     }
     private static void RejectionsAndLiveChanges()
     {
@@ -289,7 +310,7 @@ internal static class Program
     }
     private static void Main(string[] args)
     {
-        Configuration(); TrackingEligibilityAfterReload(); DirectChain(); RagdollChain(); RejectionsAndLiveChanges();
+        Configuration(); TrackingEligibilityAfterReload(); RefundResolutionAndConsumption(); DirectChain(); RagdollChain(); RejectionsAndLiveChanges();
         if(args.Length != 2) throw new ArgumentException("repository root, original assembly_valheim.dll");
         Metadata(args[0],args[1]);
         Console.WriteLine($"PASS: {Checks} source-linked phase/config/refund and original/final DLL metadata checks. No Unity world/network execution.");

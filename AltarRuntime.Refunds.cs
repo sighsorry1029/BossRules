@@ -368,18 +368,21 @@ internal static partial class AltarRuntime
         return true;
     }
 
-    internal static bool TryResolveAltarSummonRefunds(ZDO? zdo, out IReadOnlyCollection<DespawnRefundDrop> refunds)
+    internal static void ClearPaidAltarRefunds(ZDO zdo) => zdo.Set(AltarRefundsKey, "");
+
+    internal static bool TryResolveAltarSummonRefunds(ZDO zdo, out IReadOnlyCollection<DespawnRefundDrop> refunds, out string error)
     {
         refunds = Array.Empty<DespawnRefundDrop>();
-        if (zdo == null || !zdo.GetBool(AltarSummonKey) || HasTransferredAltarSummon(zdo))
+        error = "";
+        if (!IsAltarSummoned(zdo) || HasTransferredAltarSummon(zdo))
         {
-            return false;
+            return true;
         }
 
         string payload = zdo.GetString(AltarRefundsKey, "");
         if (string.IsNullOrWhiteSpace(payload))
         {
-            return false;
+            return true;
         }
 
         Vector3? refundPoint = null;
@@ -408,15 +411,17 @@ internal static partial class AltarRuntime
                 amount = Math.Max(1, parsedAmount);
             }
 
-            GameObject? itemPrefab = ResolveItemPrefab(itemName, "altar auto refund");
-            if (itemPrefab != null)
+            GameObject? itemPrefab = ResolveItemPrefab(itemName, null);
+            if (itemPrefab == null)
             {
-                resolvedRefunds.Add(new DespawnRefundDrop(itemPrefab, amount, refundPoint));
+                error = $"Offering item '{itemName}' is unavailable.";
+                return false;
             }
+            resolvedRefunds.Add(new DespawnRefundDrop(itemPrefab, amount, refundPoint));
         }
 
         refunds = resolvedRefunds;
-        return resolvedRefunds.Count > 0;
+        return true;
     }
 
     private static string BuildOfferingRefundPayload(OfferingBowl offeringBowl)

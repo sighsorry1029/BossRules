@@ -156,7 +156,7 @@ namespace BossRules
         private static string GetPrefabName(UnityEngine.GameObject go) => Utils.GetPrefabName(go);
         private static string? NormalizeReferencePrefabName(UnityEngine.GameObject? go) => go?.name;
         private static OfferingBowlRuntimeState GetOrAddOfferingBowlRuntimeState(OfferingBowl bowl) => bowl.GetComponent<OfferingBowlRuntimeState>() ?? bowl.gameObject.Add(new OfferingBowlRuntimeState());
-        private static UnityEngine.GameObject? ResolveItemPrefab(string name, string source) => ObjectDB.instance.GetItemPrefab(name.GetStableHashCode());
+        private static UnityEngine.GameObject? ResolveItemPrefab(string name, string? source) => ObjectDB.instance.GetItemPrefab(name.GetStableHashCode());
     }
     internal static class AltarItemStandHoverInfoFormatter
     {

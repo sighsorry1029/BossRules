@@ -173,12 +173,12 @@ internal static class BossRulesRuntime
         out string prefabName,
         out float? rangeOverride,
         out float? delayOverride,
-        out IReadOnlyCollection<DespawnRefundDrop> refunds)
+        out bool refundsEnabled)
     {
         prefabName = string.IsNullOrWhiteSpace(prefabNameHint) ? "" : prefabNameHint;
         rangeOverride = null;
         delayOverride = null;
-        refunds = Array.Empty<DespawnRefundDrop>();
+        refundsEnabled = true;
         int prefabHash = zdo.GetPrefab();
         if (prefabHash == 0)
         {
@@ -203,14 +203,13 @@ internal static class BossRulesRuntime
             {
                 rangeOverride = explicitRule.RangeOverride;
                 delayOverride = explicitRule.DelayOverride;
-                refunds = ResolveRefundsForRule(explicitRule, zdo);
+                refundsEnabled = explicitRule.RefundsEnabled;
                 return !string.IsNullOrWhiteSpace(prefabName);
             }
 
             if (IsAutoDetectedBossPrefab(prefabHash) ||
                 (_runtimeState.PhasePrefabHashes.Contains(prefabHash) && AltarRuntime.IsAltarSummoned(zdo)))
             {
-                refunds = ResolveAutoAltarRefunds(zdo);
                 return !string.IsNullOrWhiteSpace(prefabName);
             }
         }
@@ -220,13 +219,12 @@ internal static class BossRulesRuntime
         {
             rangeOverride = namedRule.RangeOverride;
             delayOverride = namedRule.DelayOverride;
-            refunds = ResolveRefundsForRule(namedRule, zdo);
+            refundsEnabled = namedRule.RefundsEnabled;
             return true;
         }
 
         if (!string.IsNullOrWhiteSpace(prefabName) && IsAutoDetectedBossPrefab(prefabName))
         {
-            refunds = ResolveAutoAltarRefunds(zdo);
             return true;
         }
 
@@ -349,18 +347,6 @@ internal static class BossRulesRuntime
         {
             BossRulesPlugin.BossRulesLogger.LogWarning(message);
         }
-    }
-
-    private static IReadOnlyCollection<DespawnRefundDrop> ResolveRefundsForRule(CompiledDespawnRule rule, ZDO? zdo)
-    {
-        return rule.RefundsEnabled ? ResolveAutoAltarRefunds(zdo) : Array.Empty<DespawnRefundDrop>();
-    }
-
-    private static IReadOnlyCollection<DespawnRefundDrop> ResolveAutoAltarRefunds(ZDO? zdo)
-    {
-        return zdo != null && AltarRuntime.TryResolveAltarSummonRefunds(zdo, out IReadOnlyCollection<DespawnRefundDrop> refunds)
-            ? refunds
-            : Array.Empty<DespawnRefundDrop>();
     }
 
     private static void EnsureRuntimeState()

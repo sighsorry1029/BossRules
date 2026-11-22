@@ -30,6 +30,7 @@ internal static partial class DespawnRulesManager
     private const float DespawnCountdownCheckIntervalSeconds = 0.5f;
     private const float DespawnIdleCheckIntervalSeconds = 1f;
     private const float DespawnTrackingRefreshIntervalSeconds = 1f;
+    private const double RefundRetrySeconds = 10d;
     private const int DespawnFinalCountdownSeconds = 5;
     private const int DespawnReminderIntervalSeconds = 5;
     private static readonly Dictionary<ZDOID, TrackedDespawnState> TrackedDespawnTargets = new();
@@ -68,7 +69,8 @@ internal static partial class DespawnRulesManager
         internal string PrefabName { get; set; } = "";
         internal float? RangeOverride { get; set; }
         internal float? DelayOverride { get; set; }
-        internal readonly List<DespawnRefundDrop> Refunds = new();
+        internal bool RefundsEnabled { get; set; }
+        internal string? LastRefundError { get; set; }
         internal double NoPlayerSince { get; set; } = -1d;
         internal int LastAnnouncedRemainingSeconds { get; set; } = -1;
         internal long LastInterestedPlayerId { get; set; }
@@ -372,11 +374,19 @@ internal static partial class DespawnRulesManager
         double elapsedSeconds = nowSeconds - state.NoPlayerSince;
         if (elapsedSeconds >= despawnDelaySeconds)
         {
-            IReadOnlyCollection<DespawnRefundDrop> refunds = ResolveRefundsForExecution(zdo, state);
-            DespawnRefundExecutor.ExecuteRefunds(probePoint, refunds);
+            if (ShouldRefundAtDespawn(zdo, state) &&
+                !DespawnRefundExecutor.TryRefund(zdo, probePoint, out string error))
+            {
+                if (state.LastRefundError != error)
+                {
+                    BossRulesPlugin.BossRulesLogger.LogWarning($"Postponing despawn of '{state.PrefabName}' ({zdoId}): {error}");
+                    state.LastRefundError = error;
+                }
+                ScheduleTrackedDespawnCheck(zdoId, state, nowSeconds + RefundRetrySeconds);
+                return;
+            }
             ApplyDespawnCleanupBeforeDestroy(zdo);
-            zdo.SetOwner(ZDOMan.GetSessionID());
-            ZDOMan.instance.DestroyZDO(zdo);
+            QueueServerDestruction(zdo);
             PendingDespawnRemovals.Add(zdoId);
             return;
         }
@@ -398,7 +408,17 @@ internal static partial class DespawnRulesManager
         ScheduleTrackedDespawnCheck(zdoId, state, nowSeconds + DespawnCountdownCheckIntervalSeconds);
     }
 
-    private static IReadOnlyCollection<DespawnRefundDrop> ResolveRefundsForExecution(ZDO zdo, TrackedDespawnState state)
+    internal static void QueueServerDestruction(ZDO zdo)
+    {
+        // DestroyZDO only queues removal. Exclude this object from intervening saves
+        // and mark its old chunk dirty while it is still considered persistent.
+        zdo.SetOwner(ZDOMan.GetSessionID());
+        ZDOMan.instance.SetDirtySector(zdo);
+        zdo.Persistent = false;
+        ZDOMan.instance.DestroyZDO(zdo);
+    }
+
+    private static bool ShouldRefundAtDespawn(ZDO zdo, TrackedDespawnState state)
     {
         if (BossRulesRuntime.TryResolveDespawnTrackingRule(
                 zdo,
@@ -407,13 +427,13 @@ internal static partial class DespawnRulesManager
                 out string prefabName,
                 out _,
                 out _,
-                out IReadOnlyCollection<DespawnRefundDrop> refunds))
+                out bool refundsEnabled))
         {
             state.PrefabName = string.IsNullOrWhiteSpace(prefabName) ? state.PrefabName : prefabName;
-            return refunds ?? Array.Empty<DespawnRefundDrop>();
+            return refundsEnabled;
         }
 
-        return state.Refunds;
+        return state.RefundsEnabled;
     }
 
     private static void ApplyDespawnCleanupBeforeDestroy(ZDO zdo)
