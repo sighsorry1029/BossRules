@@ -111,7 +111,8 @@ internal static partial class ForsakenPowerRuntime
     {
         foreach (ForsakenPowerSnapshot snapshot in SnapshotsByHash.Values)
         {
-            if (DataForgeStatusEffectBridge.IsStatusEffectOwnedByDataForge(Utils.GetPrefabName(snapshot.Effect.name)))
+            if (snapshot.Effect == null ||
+                DataForgeStatusEffectBridge.IsStatusEffectOwnedByDataForge(Utils.GetPrefabName(snapshot.Effect.name)))
             {
                 continue;
             }
@@ -124,7 +125,8 @@ internal static partial class ForsakenPowerRuntime
     {
         foreach (ForsakenPowerSnapshot snapshot in SnapshotsByHash.Values)
         {
-            if (!DataForgeStatusEffectBridge.IsStatusEffectOwnedByDataForge(Utils.GetPrefabName(snapshot.Effect.name)))
+            if (snapshot.Effect == null ||
+                !DataForgeStatusEffectBridge.IsStatusEffectOwnedByDataForge(Utils.GetPrefabName(snapshot.Effect.name)))
             {
                 continue;
             }
