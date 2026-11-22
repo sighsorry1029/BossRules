@@ -939,15 +939,12 @@ internal static partial class AltarRuntime
             return;
         }
 
-        Dictionary<ItemStand, string> authoredPathsByItemStand =
-            TryStampLooseItemStandAuthoredPaths(offeringBowl, prefabName, unmatchedRelevantItemStands);
+        Dictionary<string, ItemStand> standsByPath =
+            MapLooseItemStandsByAuthoredPath(offeringBowl, prefabName, unmatchedRelevantItemStands);
         foreach (AltarItemStandDefinition definition in pathDefinitions)
         {
             string path = (definition.Path ?? "").Trim();
-            ItemStand? mappedItemStand = unmatchedRelevantItemStands.FirstOrDefault(itemStand =>
-                authoredPathsByItemStand.TryGetValue(itemStand, out string? authoredPath) &&
-                string.Equals(authoredPath, path, StringComparison.Ordinal));
-            if (mappedItemStand == null)
+            if (!standsByPath.TryGetValue(path, out ItemStand? mappedItemStand) || mappedItemStand == null)
             {
                 if (unresolvedPaths.Contains(path))
                 {
@@ -1105,12 +1102,12 @@ internal static partial class AltarRuntime
     }
 
     // Authored path remapping lets loose ItemStand instances keep reference paths.
-    private static Dictionary<ItemStand, string> TryStampLooseItemStandAuthoredPaths(
+    private static Dictionary<string, ItemStand> MapLooseItemStandsByAuthoredPath(
         OfferingBowl offeringBowl,
         string prefabName,
         IReadOnlyList<ItemStand> relevantItemStands)
     {
-        Dictionary<ItemStand, string> authoredPathsByItemStand = new();
+        Dictionary<string, ItemStand> standsByPath = new(StringComparer.Ordinal);
         string normalizedPrefab = (prefabName ?? "").Trim();
         if (offeringBowl == null ||
             normalizedPrefab.Length == 0 ||
@@ -1118,7 +1115,7 @@ internal static partial class AltarRuntime
             templates.Count == 0 ||
             relevantItemStands.Count == 0)
         {
-            return authoredPathsByItemStand;
+            return standsByPath;
         }
 
         List<(float Distance, ItemStand ItemStand, AuthoredItemStandSlotTemplate Template)> candidates = new();
@@ -1139,21 +1136,19 @@ internal static partial class AltarRuntime
 
         candidates.Sort((left, right) => left.Distance.CompareTo(right.Distance));
         HashSet<int> assignedItemStandIds = new();
-        HashSet<string> assignedPaths = new(StringComparer.Ordinal);
         foreach ((float _, ItemStand itemStand, AuthoredItemStandSlotTemplate template) in candidates)
         {
             int itemStandId = itemStand.GetInstanceID();
-            if (assignedItemStandIds.Contains(itemStandId) || assignedPaths.Contains(template.Path))
+            if (assignedItemStandIds.Contains(itemStandId) || standsByPath.ContainsKey(template.Path))
             {
                 continue;
             }
 
-            authoredPathsByItemStand[itemStand] = template.Path;
+            standsByPath.Add(template.Path, itemStand);
             assignedItemStandIds.Add(itemStandId);
-            assignedPaths.Add(template.Path);
         }
 
-        return authoredPathsByItemStand;
+        return standsByPath;
     }
 
     internal static OfferingBowlSnapshot CaptureOfferingBowlSnapshot(OfferingBowl offeringBowl)
