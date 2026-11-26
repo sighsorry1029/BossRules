@@ -30,6 +30,19 @@ mono.mono_set_assemblies_path(os.pathsep.join(map(str, (managed, core, plugin.pa
 domain = mono.mono_jit_init_version(b"BossRulesBootstrapCheck", b"v4.0.30319")
 if not domain:
     raise SystemExit("Could not initialize game Mono")
+
+# ZDO's 1.0.30 static initializer reads Quaternion.identity.eulerAngles.
+# Bare Mono has no Unity native bindings. Only the identity case is used here.
+@ctypes.CFUNCTYPE(None, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float))
+def identity_euler(rotation, angles):
+    if rotation[:4] != [0.0, 0.0, 0.0, 1.0]:
+        print("Standalone Mono fixture requires Unity for a non-identity rotation", file=sys.stderr, flush=True)
+        os._exit(1)
+    angles[0] = angles[1] = angles[2] = 0.0
+
+mono.mono_add_internal_call.argtypes = [ctypes.c_char_p, ctypes.c_void_p]
+mono.mono_add_internal_call.restype = None
+mono.mono_add_internal_call(b"UnityEngine.Quaternion::Internal_ToEulerRad_Injected", identity_euler)
 assembly = mono.mono_domain_assembly_open(domain, str(runner).encode())
 if not assembly:
     raise SystemExit("Could not load check assembly")

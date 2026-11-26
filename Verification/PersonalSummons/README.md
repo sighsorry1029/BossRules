@@ -128,8 +128,9 @@ With both updated DLLs on all participants, verify in a disposable world:
 4. Move, die, disconnect or transfer owner while authorization is pending; then
    repeat during the native 12-second spawn delay. Check the game object's normal
    destruction/streaming lifecycle and retry feedback.
-5. Despawn a free summon before/after save/reload, owner change and config toggles:
+5. Despawn a free summon before/after save/reload and owner change:
    no refund. Follow with a paid summon and confirm its usual refund count once.
-6. Confirm live YAML/item changes, feature Off, absent/old YNW, host and dedicated
-   paths. Install BossRules 1.1.2 and YouAreNotWorthy 1.0.8 on all participants;
-   the unversioned implementation test builds are not the release pair.
+6. Retry a failed encounter before personal victory. The next attempt should also
+   be free. Repeat with an old BossRules config that had the feature turned off.
+7. Confirm live YAML/item changes and normal paid summons with YNW absent or its
+   required API unavailable. Check both host and dedicated-server sessions.

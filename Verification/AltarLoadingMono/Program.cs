@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.Remoting.Messaging;
+using System.Runtime.Remoting.Proxies;
 using System.Runtime.Serialization;
 using BepInEx;
 using BepInEx.Bootstrap;
@@ -43,6 +45,7 @@ internal static class Program
     {
         // Expected malformed-manifest diagnostics must not call Unity's native logger.
         UnityEngine.Debug.unityLogger.logEnabled = false;
+        CheckPrefabNames(plugin);
         Generator = plugin.GetType("BossRules.AltarReferenceGenerator", true)!;
         World = (ZoneSystem)FormatterServices.GetUninitializedObject(typeof(ZoneSystem));
         World.m_locations = new List<ZoneSystem.ZoneLocation> { new ZoneSystem.ZoneLocation() };
@@ -67,6 +70,48 @@ internal static class Program
         {
             Directory.Delete(scratch, recursive: true);
         }
+    }
+
+    private sealed class NameOnlyLoader : RealProxy
+    {
+        internal readonly AssetID RoomId = new AssetID(7, 0, 0, 1);
+        internal NameOnlyLoader() : base(typeof(IAssetLoader)) { }
+
+        public override IMessage Invoke(IMessage message)
+        {
+            var call = (IMethodCallMessage)message;
+            bool known = RoomId.Equals(call.GetArg(0));
+            object result = call.MethodName switch
+            {
+                nameof(IAssetLoader.IsAvailable) => known,
+                nameof(IAssetLoader.GetName) when known => " dvergr_new_bossroom_ENTRANCE02 ",
+                _ => throw new InvalidOperationException("Unexpected asset access during name lookup: " + call.MethodName)
+            };
+            return new ReturnMessage(result, null, 0, call.LogicalCallContext, call);
+        }
+    }
+
+    private static void CheckPrefabNames(Assembly plugin)
+    {
+        var loader = new NameOnlyLoader();
+        FieldInfo field = typeof(Runtime).GetField("s_assetLoader", Static)!;
+        object? previous = field.GetValue(null);
+        field.SetValue(null, loader.GetTransparentProxy());
+        try
+        {
+            MethodInfo resolve = plugin.GetType("BossRules.AltarLocationResolver", true)!.GetMethod("GetZoneLocationPrefabName", Static)!;
+            MethodInfo match = plugin.GetType("BossRules.QueenDungeonAltarSupport", true)!.GetMethod("IsTargetRoom", Static)!;
+            string Name(ZoneSystem.ZoneLocation location) => (string)resolve.Invoke(null, new object[] { location })!;
+            var prefab = new SoftReference<UnityEngine.GameObject>(loader.RoomId);
+            var location = new ZoneSystem.ZoneLocation { m_prefab = prefab, m_prefabName = " DN_Bossroom:custom " };
+            Check(Name(location) == "DN_Bossroom:custom", "configured location name takes precedence over the asset name");
+            location.m_prefabName = null;
+            Check(Name(location) == "dvergr_new_bossroom_ENTRANCE02", "location falls back to the registered asset name without a load");
+            Check((bool)match.Invoke(null, new object[] { new DungeonDB.RoomData { m_prefab = prefab } })!, "Queen room is recognized without loading it");
+            location.m_prefab = new SoftReference<UnityEngine.GameObject>(new AssetID(8, 0, 0, 1));
+            Check(Name(location) == "", "unknown asset ID is skipped without a name lookup");
+        }
+        finally { field.SetValue(null, previous); }
     }
 
     private static void CheckRuntimeTraversal(Assembly plugin)

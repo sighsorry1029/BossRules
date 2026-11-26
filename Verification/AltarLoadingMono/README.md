@@ -1,5 +1,22 @@
 # Altar loading verification
 
+## Valheim 1.0.30
+
+On the Windows x64 client (26870846) and dedicated server (26870897), the
+fixture calls the merged plugin's location and Queen room name lookups with
+the original `SoftReference<GameObject>.name` getter. A test asset loader
+answers only availability and name queries. The checks cover location aliases,
+name fallback, Queen room identification and an unregistered asset ID.
+Both roles passed 297 checks with the MWL 5.2.2 manifest. The standalone Mono
+runner supplies the identity quaternion conversion used by the 1.0.30 ZDO
+initializer. It rejects other rotations.
+
+In a separate dedicated-server run, BossRules generated the altar reference
+for a fresh world, including the Queen altar and both Frozen King bowls. No
+remote player joined this run.
+
+## Valheim 1.0.20
+
 2026-10-16. Baseline: `main 22cca43271738a6fff35fdd53dc1171131e164b9` (clean).
 The unchanged Debug build/deployment passed before edits. The implementation
 stage did not change versions or dependencies or create a Release package.

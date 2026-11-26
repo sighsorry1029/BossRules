@@ -47,7 +47,6 @@ internal static class PersonalSummonRuntime
         internal float Expires;
     }
 
-    internal static bool Enabled => BossRulesConfig.IsPersonalProgressionSummonsEnabled() && YouAreNotWorthyBridge.Available;
     internal static bool IsFreeSpawn(OfferingBowl bowl) => ReferenceEquals(_freeSpawn, bowl);
 
     internal static void Update()
@@ -113,7 +112,7 @@ internal static class PersonalSummonRuntime
 
     internal static string AppendHover(string text, OfferingBowl bowl)
     {
-        if (!Enabled || Evaluate(Kind(bowl), key => YouAreNotWorthyBridge.Key(key)) != Eligibility.Free) return text;
+        if (!YouAreNotWorthyBridge.Available || Evaluate(Kind(bowl), key => YouAreNotWorthyBridge.Key(key)) != Eligibility.Free) return text;
         return text + "\n" + Localization.instance.Localize("[<color=yellow><b>$KEY_Use</b></color>] ")
                + BossRulesLocalization.Text("bossrules_personal_summon_free");
     }
@@ -121,7 +120,7 @@ internal static class PersonalSummonRuntime
     // true means this interaction was handled, including fail-closed pending/error states.
     internal static bool TryInteract(OfferingBowl bowl, Humanoid user)
     {
-        if (!Enabled || user != Player.m_localPlayer) return false;
+        if (!YouAreNotWorthyBridge.Available || user != Player.m_localPlayer) return false;
         AltarRuntime.ReconcileLooseOfferingBowl(bowl);
         int kind = Kind(bowl);
         Eligibility eligibility = Evaluate(kind, key => YouAreNotWorthyBridge.Key(key));
@@ -168,7 +167,7 @@ internal static class PersonalSummonRuntime
 
     private static void OnBegin(long sender, ZPackage package)
     {
-        if (_rpc == null || !ReferenceEquals(_rpc, ZRoutedRpc.instance) || !Enabled || Requests.Count >= 64 || package.Size() > 4096) return;
+        if (_rpc == null || !ReferenceEquals(_rpc, ZRoutedRpc.instance) || !YouAreNotWorthyBridge.Available || Requests.Count >= 64 || package.Size() > 4096) return;
         try
         {
             ZDOID viewId = package.ReadZDOID();
@@ -210,7 +209,7 @@ internal static class PersonalSummonRuntime
 
     private static void OnAuthorize(long owner, ZPackage package)
     {
-        if (_rpc == null || !ReferenceEquals(_rpc, ZRoutedRpc.instance) || !BossRulesPlugin.IsRuntimeServer() || !Enabled || package.Size() > 4096) return;
+        if (_rpc == null || !ReferenceEquals(_rpc, ZRoutedRpc.instance) || !BossRulesPlugin.IsRuntimeServer() || !YouAreNotWorthyBridge.Available || package.Size() > 4096) return;
         try
         {
             string token = package.ReadString();
@@ -246,7 +245,7 @@ internal static class PersonalSummonRuntime
     {
         if (!IsServerSender(sender) || !Requests.TryGetValue(token, out Pending? request)) return;
         Requests.Remove(token); // Consume before any spawn/effect: duplicate replies cannot execute twice.
-        if (!allowed || !Enabled || request.Expires <= Time.realtimeSinceStartup || request.View == null
+        if (!allowed || !YouAreNotWorthyBridge.Available || request.Expires <= Time.realtimeSinceStartup || request.View == null
             || !request.View.IsValid() || !request.View.IsOwner() || request.View.GetZDO().m_uid != request.ViewId
             || request.Bowl == null || BowlView(request.Bowl) != request.View
             || !NearCharacter(request.Requester, request.CharacterId, request.Bowl.transform.position, out _)) return;

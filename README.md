@@ -1,310 +1,46 @@
 # BossRules
 
-Forsaken powers overhaul, despawn abandoned bosses with offering refunds, hover an altar to see the offering and boss. <br>
-Select Forsaken Powers remotely, block duplicate summons, personalize boss stones, and pressure tames near bosses.
+Choose Forsaken Powers away from the Sacrificial Stones, customize boss altars, and recover offerings when a fight is abandoned.
 
-![](https://i.ibb.co/LdtFvGDQ/Screenshot-2026-10-08-182508.png) <br>
-You can select Forsaken Powers remotely using radial menu.
+![Forsaken Power radial menu with effects beside the highlighted icon](https://i.ibb.co/LdtFvGDQ/Screenshot-2026-10-08-182508.png)
 
-![](https://i.ibb.co/C3tz6LBW/eikthyrdespawn.gif) <br>
-You can change the boss despawn range and delay in the config.
+Press **K**, point at a power to see its effects, then left-click to equip it. Switching preserves your cooldown.
 
-![](https://i.ibb.co/p6B05TMs/moderdespawn.gif) <br>
-Getting away from the boss with also count for despawn.
+![Eikthyr despawn countdown](https://i.ibb.co/C3tz6LBW/eikthyrdespawn.gif)
 
-![](https://i.ibb.co/kZX4X5J/faderdespawn.gif) <br>
-If you get back in time, despawn would be canceled. If the boss does despawn offerings would be refunded.
+When the last living player leaves the boss’s range, a countdown starts.
 
-## Highlights
+![Player leaving Moder’s encounter area](https://i.ibb.co/p6B05TMs/moderdespawn.gif)
 
-- Edit boss altars without rebuilding locations by hand.
-- Block duplicate boss summons from both altars and `CreatureSpawner`.
-- Despawn abandoned bosses and optionally refund real altar offerings.
-- Pressure tamed creatures near bosses so boss arenas stay dangerous.
-- Give each player their own boss stone unlock state.
-- Let players rotate unlocked Forsaken Powers remotely.
-- Rebalance Forsaken Power duration, cooldown, costs, regen, damage, armor, movement, skills, and tooltips.
-- Sync server YAML to clients through ServerSync.
-- Reload YAML while the game is running.
+Return before the countdown ends to keep the fight going.
 
-## Why Use BossRules
+![Fader despawn and offering refund](https://i.ibb.co/kZX4X5J/faderdespawn.gif)
 
-BossRules focuses on the awkward parts of boss management that usually live across several systems:
+When refunds are enabled, a despawn returns the offering to its altar, even in a later phase of a linked boss fight.
 
-- Altars can be edited by prefab name with generated reference data.
-- Boss duplicate protection keeps respawn timers honest instead of letting cooldowns finish in the background.
-- Altar refunds are tied to actual altar-summoned bosses, not nearby world spawns.
-- Boss stones and Forsaken Powers can be customized without turning the mod into a general status-effect editor.
-- Dedicated servers remain the source of truth for synced rule files.
+## Boss stones and powers
 
-## Generated Files
+Hang a trophy at the Sacrificial Stones to unlock its power for everyone present. Each player sees their own unlocked trophies. You can rebind the menu key or hide its HUD hint.
 
-BossRules creates its files under:
+All seven powers are rebalanced. Servers can tune their effects, duration and cooldown, and how much adrenaline activation grants.
 
-```text
-BepInEx/config/BossRules/
-```
+## Altars and encounters
 
-Files:
+- Look at an altar to see what it summons and what it costs. Linked item stands show what they accept. Servers can change offerings, bosses and altar cooldowns.
+- Altars and creature spawners can block duplicate bosses nearby. A blocked spawner’s respawn timer starts once the boss is gone.
+- Despawn timers and refunds can vary by boss. Under automatic rules, a newly placed dungeon Queen or Frozen King is protected until a player approaches.
+- Bosses can optionally weaken nearby tames, making them lose health, take more damage and deal less.
 
-- `BossRules.altar.yml`: boss altar and boss item stand overrides.
-- `BossRules.altar.reference.yml`: generated reference for loaded boss altar and boss stone prefabs.
-- `BossRules.yml`: boss despawn and boss tamed pressure rules.
-- `BossRules.forsakenPowers.yml`: Forsaken Power stat edits in a DataForge-compatible row format.
-- `sighsorry.BossRules.cfg`: synced BepInEx feature toggles.
+## Setup
 
-Server admins should edit the YAML on the server or host. Synced YAML is pushed to clients automatically.
-Optional `BossRules.<Language>.yml` or `.json` message translations are discovered recursively under `BepInEx`.
-The release package includes `BossRules.English.yml` as an editable translation template.
+Install the same version on the host or dedicated server and every client. The first launch creates `BepInEx/config/sighsorry.BossRules.cfg` and the rule files in `BepInEx/config/BossRules/`. Server rule edits sync while the world is running.
 
-## Boss Altars
-
-`BossRules.altar.yml` supports compact altar entries:
-
-- `prefab`
-- `enabled`
-- `offeringBowl`
-- `itemStands`
-
-Use the generated `BossRules.altar.reference.yml` to find real prefab names, item stand paths, and current altar values. Copy only the rows you want to override into `BossRules.altar.yml`.
-
-With More World Locations AIO installed, automatic reference generation skips its location interiors before loading their assets. New partial references are marked in the file; existing full references are preserved. This only limits automatic discovery: MWL overrides in `BossRules.altar.yml` still apply. If MWL's asset manifest cannot be read, automatic generation is deferred for that world instead of forcing a full scan.
-
-For all locations, run `bossrules:reference altar` on the host or dedicated-server console after the world has loaded. This explicit full scan can pause the game/server and use substantial memory. Remote clients do not perform location reference scans.
-
-With no altar overrides applied, unconfigured locations skip recursive altar component scans. Once an override begins, BossRules retains its existing restoration path for subsequent locations. Locations remain registered for live YAML changes; a newly configured altar captures its baseline immediately before its first override.
-
-When a location contains multiple `OfferingBowl` components, the generated reference writes one row per bowl with an `offeringBowl.path`. Single-bowl locations keep the compact pathless format. Existing pathless overrides remain compatible and select the first bowl, while an explicit missing path skips that row.
-
-BossRules intentionally does not own general location editing, object drops, runestone pins, or vegvisir rewards.
-
-## Personal first-victory summons (optional YouAreNotWorthy integration)
-
-With BossRules 1.1.2+ and YouAreNotWorthy 1.0.8+ installed on the host/server and clients, the synced
-`Personal Progression Summons` option (default On) enables these inner altars:
-
-| Altar | Free summon condition |
-| --- | --- |
-| Queen (`offeraltar_queen`, inside `DG_DvergrBoss`) | Personal `defeated_queen` is missing |
-| Frozen King (`offeraltar_FrozenKing_bossroom`) | Personal `LastBossGate_Open` is present and `defeated_frozenking_p3` is missing |
-
-Use the displayed **Use** interaction (normally E); no offering item in the
-inventory is required. Using the matching offering item also requests a free
-summon when eligible. YNW's item progression requirements still apply. The
-Frozen King final phase key is used, not the first phase's `defeated_frozenking`.
-After personal completion, the normal offering and configured amount apply.
-The exterior Frozen King gate keeps its normal cost and key-grant behavior.
-
-These are free attempts until completion, not a one-use voucher or a location
-reset. An eligible player can summon for their group. Free summons have **no
-offering refunds**, including after despawn, save/reload, or a later setting
-change. Native spawn delay/effects and existing enabled duplicate/cooldown rules
-remain. Bowls changed to use item stands, grant a key, spawn an item, or summon a
-different boss are excluded from this integration.
-
-The server checks YNW's authenticated character snapshot and item requirement;
-temporarily unavailable data does not authorize a free summon or silently charge
-the local request. The native object owner resolves the actual dungeon bowl and
-its configured item, because a dedicated server may have only its ZDO loaded.
-Only that owner may consume the short-lived server approval. Ownership changes
-or expiry cancel the request; press Use again. Once native delayed spawning has
-begun, its usual lifecycle applies. This follows Valheim's object-owner trust
-model and YNW's client-owned progression snapshots; it is not an anti-cheat ledger.
-
-YNW without the new item-use API, or no YNW, leaves normal paid summons in place.
-No existing altar YAML or personal-key save format needs migration.
-
-## Boss Rules
-
-`BossRules.yml` controls runtime boss behavior:
-
-- `despawn`: default range/delay plus compact rows in `prefab, despawnRange, despawnDelay, refunds` format.
-- `bossPhases`: ordered character prefab lists that inherit the original altar offering across a boss fight.
-- `bossTamedPressure`: a global rule for tamed creatures near bosses.
-
-`BossRules.forsakenPowers.yml` controls selected Forsaken Power stat edits. Its top-level list is intentionally compatible with DataForge `effects.yml` rows.
-
-Despawn rows use `despawn.defaults` when range or delay is omitted. Set `despawnRange` to `0` to disable despawn for one boss prefab.
-
-```yaml
-despawn:
-  defaults: 64, 90
-  rules:
-  - Eikthyr
-  - Bonemass, 96, 120
-  - Dragon, , 180
-  - GoblinKing, 0
-  - Fader, 128, 180, false
-```
-
-Refund values:
-
-- omit the fourth value for `true`
-- `true`: refund the actual altar offering when the boss was marked as altar-summoned
-- `false`: no refund
-
-Refunds drop at the original `OfferingBowl` position when possible. Bosses from `CreatureSpawner`, `SpawnSystem`, or other world sources do not receive altar refunds just because they died near an altar.
-
-Newly generated initial Queens in the Queen boss room and initial Frozen Kings in `DN_Bossroom` are protected from default automatic despawn until a living player approaches within the configured XZ despawn range and a height difference of at most 32m. Approach is checked once per second by the boss's network owner. It does not require opening the door, entering the room, line of sight, or combat: a nearby player outside a wall at the same height can release protection. After that first approach, the existing XZ-only range and countdown apply, without altar refunds. An explicit row for the boss in `despawn.rules` takes precedence, including before the first approach.
-
-Initial provenance and first approach are saved on each boss ZDO, so they survive normal saves, reloads, and ownership changes. This applies to new Full/Ghost location or room generation, including resets; existing bosses with unknown provenance are not reclassified, and already missing bosses are not restored. Altar resummons keep their existing despawn and refund behavior. The approach checks must also be installed on clients that can own the boss.
-
-### Boss phases and offering refunds
-
-List only the **character phases**, using exact prefab names, in the server's `BossRules.yml`:
-
-```yaml
-bossPhases:
-  - [FrozenKing, FrozenKing_p2, FrozenKing_p3]
-  - [ML_AshHuldraQueen1, ML_AshHuldraQueen2, ML_AshHuldraQueen3]
-```
-
-These two chains are the defaults when `bossPhases` is absent or null; existing files are not rewritten.
-An explicit list replaces the defaults, and `bossPhases: []` disables inheritance. Include the
-Frozen King row when adding custom chains if you want to retain it. Uninstalled mod prefabs
-remain inactive. Each row needs at least two names, and a prefab may occur only once across
-all rows. Invalid YAML, duplicate phases and cycles reject the reload and keep the previous
-configuration. The existing YAML watcher and server sync also apply to this section; all
-clients that can own these creatures need the updated BossRules build.
-
-BossRules supports a death effect that creates the next character directly, or creates one
-persistent network Ragdoll whose removal effect creates that character. For example,
-`ML_AshHuldraQueen2_Transform` is discovered automatically and **must not be listed**. Only the
-current related effect lists are inspected at the transition; no AssetBundles are loaded or
-scanned. The path is rechecked against live effects, including changes made by other mods.
-Branching character spawns, multiple matching results, nonpersistent objects, longer Ragdoll
-chains and custom script/RPC transitions are not inferred. Unsupported paths log a warning
-when an altar-summoned phase attempts the transition.
-
-The actual spawning owner passes the original offering and altar position to the exact
-created object. A Ragdoll bridge stores the record in its ZDO while waiting; a consumed-source
-ZDO marker prevents repeated callbacks from copying the record twice. Neither phase kills
-nor the final kill directly refund items. The active character phase uses the existing
-distance/countdown despawn rules and returns the original paid offering when those rules
-remove it. Per-prefab `despawn.rules` still take precedence, including `refunds: false` and
-range `0`. Configured non-boss phases are automatically tracked only when they carry altar
-provenance; their game `boss` flag is unchanged. Natural/initial spawns receive no offering
-record, and YNW free summons retain an empty refund throughout the chain.
-
-Removing or changing an edge live stops further transfers along that edge, including a
-Ragdoll already waiting to transform. It does not manufacture or erase a current character's
-record. Already spawned later phases whose original offering was lost before this update
-cannot be refunded retroactively. This feature does not change the existing same-prefab
-duplicate-summon blocking policy or make Ragdolls count as living bosses for that check.
-
-## Localization
-
-BossRules includes English and Korean message translations. Add overrides in `BossRules.<Language>.yml` or `.json`; the file name uses Valheim's language name, for example `BossRules.Korean.yml`.
-
-```yaml
-bossrules_message_despawn_start: "{name} will despawn in {seconds}s unless someone returns."
-bossrules_message_despawn_reminder: "{name} will despawn in {seconds}s."
-bossrules_message_despawn_canceled: "{name} despawn canceled."
-bossrules_message_boss_tamed_pressure: "Tamed creatures near a boss are weakened."
-bossrules_message_forsaken_power_open: "Choose power"
-```
-
-Embedded English is the fallback for missing message keys. Despawn names are resolved on the receiving client in this order: the client's current localized character name, its English localized name, then the prefab name.
-
-The former `localization:` section in `BossRules.yml` is deprecated and ignored so older files still load; new default files no longer contain it.
-
-## Forsaken Powers
-
-BossRules can rebalance selected `SE_Stats` fields for Forsaken Powers:
-
-- duration and cooldown
-- guardian power activation adrenaline gain through the synced config
-- stamina costs
-- block stamina flat cost and timed block bonus
-- outgoing damage
-- incoming damage modifiers
-- health, stamina, and eitr regen
-- carry weight
-- flat and percent armor
-- movement speed and jump height
-- skill levels
-- adrenaline and stagger gauge
-- vanilla status attributes such as `SailingPower`
-
-`BossRules.forsakenPowers.yml` uses the same compact style as DataForge status effects:
-
-```yaml
-- effect: GP_Eikthyr
-  time: 31, 120
-  staminaDrainModifier:
-    run: -0.5
-    jump: -0.5
-
-- effect: GP_Moder
-  time: 31, 120
-  attributes: SailingPower
-  stats:
-    speedModifier: 0.1
-    jumpModifier: 0, 0.2, 0
-```
-
-Modifier values use Valheim/DataForge-style factors. For example, `-0.5` means 50% lower cost, `0.1` means +10%, and `regenMultiplier: 2, 1, 1` means health regen x2 while stamina and eitr stay unchanged.
-
-### Vanilla vs BossRules Forsaken Powers
-
-The table below compares vanilla `GP_` effect rows from DataForge `effects.reference.yml` with the BossRules preset in `BossRules.forsakenPowers.yml`.
-
-All seven default powers use `time: 31, 120`: 31 seconds of duration and a 120-second cooldown. Existing YAML files are preserved; edit their `time` entries to adopt these defaults.
-
-| Effect | Vanilla effect | BossRules effect |
-| --- | --- | --- |
-| `GP_Eikthyr` | `time: 300, 1200`<br>Stamina drain: run/jump/swim `-0.6` | `time: 31, 120`<br>Pickaxe damage `0.5`<br>Stamina drain: run/dodge `-0.5`<br>Speed `0.1`<br>Blunt: `SlightlyResistant` |
-| `GP_TheElder` | `time: 300, 1200`<br>Regen `1.3, 1, 1`<br>Chop/pickaxe damage `0.6` | `time: 31, 120`<br>Chop damage `0.5`<br>Stamina drain: swim/sneak `-0.5`<br>Regen `2, 1, 1`<br>Poison: `SlightlyResistant` |
-| `GP_Bonemass` | `time: 300, 1200`<br>Block `0, -5`<br>Block stamina drain `-1`<br>Blunt/slash/pierce: `SlightlyResistant` | `time: 31, 120`<br>Block stamina drain `-0.5`<br>Block `0, -5`<br>Armor `20, 0.2`<br>Frost: `SlightlyResistant` |
-| `GP_Moder` | `time: 300, 1200`<br>`SailingPower`<br>Speed `0.1`<br>Carry weight `300`<br>Frost: `Resistant` | `time: 31, 120`<br>`SailingPower`<br>Stamina drain: jump `-0.5`<br>Carry weight `300`<br>Jump `0, 0.2, 0`<br>Farming/Fishing skill `25`<br>Fire: `SlightlyResistant` |
-| `GP_Yagluth` | `time: 300, 1200`<br>Farming skill `25`<br>Lightning: `Resistant`<br>Blunt/slash/pierce/chop/pickaxe/fire/frost/lightning/poison/spirit damage `0.1` | `time: 31, 120`<br>Fire/poison/frost/lightning/spirit damage `0.1`<br>Regen `1, 1, 2`<br>Pierce: `SlightlyResistant` |
-| `GP_Queen` | `time: 300, 1200`<br>Regen `1, 1, 2`<br>Sneak stamina drain `-1`<br>Poison: `Resistant` | `time: 31, 120`<br>Pierce/blunt/slash damage `0.1`<br>Attack stamina drain `-0.1`<br>Slash: `SlightlyResistant` |
-| `GP_Fader` | `time: 300, 1200`<br>Adrenaline `1`<br>Stagger `-0.5`<br>Attack damage `None, 0`<br>Fire: `Resistant` | `time: 31, 120`<br>Adrenaline `1`<br>Stagger `-0.5`<br>Lightning: `SlightlyResistant` |
-
-## Boss Stones
-
-BossRules owns personalized boss stones and remote Forsaken Power selection.
-
-- `Personalized Boss Stones`: each player keeps their own unlocked boss stone powers.
-- `Remote Forsaken Power Selection`: players can select unlocked powers without returning to the Start Temple.
-- `Rotate Forsaken Power Shortcut`: client-only shortcut to open/close remote selection; defaults to `K`. The legacy setting name and existing saved shortcuts are preserved.
-- `Show Forsaken Power Shortcut Hint`: client-only display setting, default `On`. Set it to `Off` to hide the shortcut and selection-control hints below the Forsaken Power HUD icon. The shortcut, radial selection and icon-side effect descriptions remain available, subject to the server's remote-selection setting. Changes apply on the next HUD update without restarting.
-
-Press the shortcut once to open a centered Forsaken Power radial. It stays open after
-you release the key. Point at a power and left-click to select it; confirmation occurs
-on mouse release. Press the shortcut again, right-click, press Escape or click the center
-to close without changing the power. There is no hold delay or short-press cycling.
-Selection does not activate the power or reset its cooldown.
-The menu uses the current personal boss-stone unlocks and rechecks them before selection.
-Pointing toward a power shows its localized effects beside that icon; the power name
-appears only in the radial center. The panel omits the tooltip's introductory lore
-while retaining current stat lines and duration from the game, BossRules or other mods.
-Active sailing, taming and incoming collision-damage attributes have concise effect lines.
-It hides in the center or when the menu closes; pointing at a power again refreshes
-its description. Long effect lists are fitted to the screen.
-
-This menu uses keyboard/mouse input. Vanilla radial/emote bindings take priority;
-if an existing shortcut is still `G` or overlaps a rebound vanilla radial key, choose a
-different shortcut such as `K`. Existing bindings are never changed automatically.
-Building placement prevents opening the radial. Chat, other menus, focus loss, death, teleporting, sleep, player/HUD
-replacement and changes to the shortcut cancel the pending selection. A fresh press is
-required after cancellation. Vanilla radial preferences and its last-used item are preserved.
-
-Console commands:
-
-- `bossrules:inspect bossstone`
-- `bossrules:bossstone reset <exactPlayerName>`
-- `bossrules:reference altar` (host/server administrator; full reference scan)
+To customize an altar, copy its entry from `BossRules.altar.reference.yml` into `BossRules.altar.yml`. Edit encounters in `BossRules.yml` and powers in `BossRules.forsakenPowers.yml`.
 
 ## Compatibility
 
-BossRules is designed to sit beside DropNSpawn:
+- **YouAreNotWorthy.** Press **Use** at the Queen’s or Frozen King’s inner altar for free attempts until your first personal victory. Item requirements still apply. For the Frozen King, you need the personal key from his outer gate, which costs its usual offering. Free attempts end when you defeat his final phase.
+- **More World Locations AIO.** Automatic discovery skips MWL interiors. Custom altar rules still work there. For a full scan, run `bossrules:reference altar` on the host or server after world load. This can pause the server and use substantial memory.
+- **DataForge.** Its overrides take priority for individual status effects.
 
-- Use BossRules for boss altars, boss stones, Forsaken Powers, boss despawn, and boss tame pressure.
-- Use DropNSpawn for creature drops, object loot, spawners, and world spawn tables.
-- Use UsefulRunestones for pinless RuneStone global pins and Vegvisir rewards.
-
-If another mod owns the same boss system, disable the overlapping BossRules feature in the BepInEx config.
-
-## GitHub
-https://github.com/sighsorry1029/BossRules
+[Compare the seven power presets with vanilla](https://github.com/sighsorry1029/BossRules/blob/ae28779955a8979a96a43de373504d3a35f6868f/README.md#vanilla-vs-bossrules-forsaken-powers) · [Configure refunds across boss phases](https://github.com/sighsorry1029/BossRules/blob/ae28779955a8979a96a43de373504d3a35f6868f/README.md#boss-phases-and-offering-refunds)

@@ -39,7 +39,7 @@ internal static class QueenDungeonAltarSupport
         return roomData != null &&
                roomData.m_prefab.IsValid &&
                string.Equals(
-                   (roomData.m_prefab.Name ?? "").Trim(),
+                   (roomData.m_prefab.name ?? "").Trim(),
                    RoomPrefabName,
                    StringComparison.OrdinalIgnoreCase);
     }

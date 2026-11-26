@@ -155,8 +155,6 @@ namespace BossRules
 {
     public static class BossRulesConfig
     {
-        public static bool Enabled = true;
-        public static bool IsPersonalProgressionSummonsEnabled() => Enabled;
         public static bool IsAltarRulesEnabled() => true;
     }
     public static class BossRulesPlugin

@@ -331,7 +331,12 @@ internal static class AltarLocationResolver
 
     internal static string GetZoneLocationPrefabName(ZoneSystem.ZoneLocation? location)
     {
-        return (location?.m_prefabName ?? location?.m_prefab.Name ?? "").Trim();
+        if (location?.m_prefabName != null)
+        {
+            return location.m_prefabName.Trim();
+        }
+
+        return location != null && location.m_prefab.IsValid ? (location.m_prefab.name ?? "").Trim() : "";
     }
 
     internal static string GetLocationSpawnContextPrefabName(ZoneSystem.ZoneLocation? location)

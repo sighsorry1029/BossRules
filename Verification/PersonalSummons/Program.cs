@@ -25,7 +25,6 @@ internal static class Program
     {
         PersonalSummonRuntime.Shutdown();
         Time.realtimeSinceStartup = 0;
-        BossRulesConfig.Enabled = true;
         AltarRuntime.Block = false;
         ZRoutedRpc.instance = new();
         ZNet.instance = new();
@@ -107,6 +106,11 @@ internal static class Program
         Check(!PersonalSummonRuntime.IsFreeSpawn(Bowl), "free context restored after call");
         Finish(decision);
         Check(Bowl.Spawns == 1, "approval replay cannot spawn twice");
+        Bowl.Queued = false; // The previous encounter ended without a personal victory.
+        Finish(Authorize(Begin()));
+        Check(Bowl.Spawns == 2 && Bowl.FreeContextAtSpawn, "a new attempt is still free before personal victory");
+        YouAreNotWorthyApi.Keys["defeated_frozenking_p3"] = 3;
+        Check(!PersonalSummonRuntime.TryInteract(Bowl, Player.m_localPlayer!), "personal victory restores the paid interaction");
 
         Reset(); decision = Authorize(Begin()); Finish(decision, 55);
         Check(Bowl.Spawns == 0, "non-server approval rejected");
@@ -146,12 +150,8 @@ internal static class Program
         Reset(); YouAreNotWorthyApi.Keys["defeated_frozenking_p3"] = 1;
         Check(PersonalSummonRuntime.TryInteract(Bowl, Player.m_localPlayer!) && ZRoutedRpc.instance.Sent.Count == 0,
             "unavailable local snapshot handled without paid fallthrough");
-        Reset(); YouAreNotWorthyApi.Keys["defeated_frozenking_p3"] = 3;
-        Check(!PersonalSummonRuntime.TryInteract(Bowl, Player.m_localPlayer!), "completed player retains paid native path");
         Reset(); Bowl.m_setGlobalKey = "LastBossGate_Open"; Bowl.m_bossPrefab.name = "vfx_LastBossGate_destroyed";
         Check(!PersonalSummonRuntime.TryInteract(Bowl, Player.m_localPlayer!), "outer gate remains paid");
-        Reset(); BossRulesConfig.Enabled = false;
-        Check(!PersonalSummonRuntime.TryInteract(Bowl, Player.m_localPlayer!), "feature off preserves native path");
         Reset(); PersonalSummonRuntime.TryInteract(Bowl, Player.m_localPlayer!);
         Check(ZRoutedRpc.instance.Sent.Single().Target == 10, "E sends only to native object owner, no offering inventory required");
 

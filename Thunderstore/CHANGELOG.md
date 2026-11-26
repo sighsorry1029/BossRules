@@ -1,3 +1,11 @@
+## 1.1.9
+
+- Update BossRules for Valheim 1.0.30. Fix repeated errors during location spawning and altar reference generation by using the game's current prefab name lookup, including for the Queen's dungeon room. Boss despawn cleanup now uses the active boss counter from 1.0.30.
+- Fix a save timing issue that could restore a despawned boss alongside its refunded offering after a restart. If the server cannot create the full refund, it postpones the despawn and retries.
+- With YouAreNotWorthy, eligible players can summon the Queen or Frozen King at the inner altar for free until their first personal victory over that boss, including retries. This now applies automatically, even if the old `Personal Progression Summons` option was off. Offering item requirements still apply. The Frozen King's outer gate keeps its usual cost.
+- Skip destroyed status effects when restoring Forsaken Power settings. Refresh the README with a shorter guide to altars, personal boss stones and powers.
+- Install BossRules 1.1.9 on the host or dedicated server and all clients. The required Valheim BepInEx pack is `5.4.2360`.
+
 ## 1.1.8
 
 - Add the client-only `Show Forsaken Power Shortcut Hint` setting, default `On`. Set it to `Off` to hide the shortcut and selection-control hints below the Forsaken Power HUD icon; changes apply on the next HUD update without restarting.
